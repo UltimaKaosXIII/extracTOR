@@ -44,14 +44,12 @@ This is where SWTOR stores the Asset Archives. The .tor files.
 - If you're using the Steam version of SWTOR, that's usually something like "X:\Program Files (x86)\Steam\steamapps\common\Star Wars - The Old Republic\Assets"
 		
 X: is a variable, depending on which drive you installed SWTOR to. Your install locations may be different.
-Example:
-![image](https://github.com/user-attachments/assets/990a536a-c863-4266-89af-ceaac7b59eff)
-
 	
 ### Output Folder:
 - This is where you want the extracted files to go. Just like with Slicers GUI.
-Example:
-![image](https://github.com/user-attachments/assets/91f3c75c-f760-4f9b-b62c-2dce0234b9b3)
+
+![image](https://github.com/user-attachments/assets/d564f7df-7a34-47a8-ab91-c36e90f9aa3d)
+
 	
 ### -> Live Radio Button
 - Tells extracTOR that you want to extract files from the "main" version of the game.
