@@ -69,12 +69,12 @@ X: is a variable, depending on which drive you installed SWTOR to. Your install 
    - Extracts the files from the .tor archives if the file exists in the hash list.
      - Using -> Live:
        Extracted files will be placed into the folder you've selected in the "Output Folder" text box.
-       For example, my Live extraction is placed in: "E:\guiOut" and all the games Live files are placed in the "resources" folder inside.
+       For example, my Live extraction is placed in: "E:\swtor\extract\" and all the games Live files are placed in the "resources" folder inside.
 ![image](https://github.com/user-attachments/assets/613b7874-7cb2-4652-a2c2-45e31eb619e5)
 
      - Using -> PTS:
        Extracted files will be placed in a "pts" folder INSIDE the folder you've selected in the "Output Folder" text box.
-       For example, my PTS extraction is placed in: "E:\guiOut" and all the games PTS files are placed in the "resources" folder inside the "pts" folder.
+       For example, my PTS extraction is placed in: "E:\swtor\extract\" and all the games PTS files are placed in the "resources" folder inside the "pts" folder.
 ![image](https://github.com/user-attachments/assets/b9520001-9814-49ec-abe0-abce1430da63)
 
 When extraction finishes a message box will pop up letting you know that extraction is complete and where you can find your extracted files.
