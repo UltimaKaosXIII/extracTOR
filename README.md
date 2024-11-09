@@ -1,4 +1,4 @@
-# extractTOR
+# extracTOR
 ![image](https://github.com/user-attachments/assets/ba288e4e-cbf3-4d8b-9781-f084bb836331)
 
 ## Why another Extractor?
