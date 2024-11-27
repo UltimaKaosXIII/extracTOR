@@ -1,5 +1,6 @@
 # extracTOR
-![image](https://github.com/user-attachments/assets/ba288e4e-cbf3-4d8b-9781-f084bb836331)
+![image](https://github.com/user-attachments/assets/77b55f63-5d02-4bf4-9851-b46cdf364be9)
+
 
 ## Why another Extractor?
 Because Slicers GUI has, for a long while, been unstable.
@@ -20,6 +21,7 @@ The latest release can be found [here](https://github.com/UltimaKaosXIII/extracT
 You'll probably get the typical message about Protecting your PC. It's fine. Click More Info, and then click Run Anyway.
 
 Expect to see a message saying it can't find a hash list.
+
 ![image](https://github.com/user-attachments/assets/c61b08e7-827b-4b98-8250-491e0a8b5463)
 
 This is fine, simply click OK, then click either the "Check Hash List" button or the "Download Hash List" button
@@ -37,7 +39,8 @@ If you have a "hashes_filename.txt" hash list from an install of Slicers GUI or 
    - Extraction should work perfectly fine.
 
 ## The UI:
-![image](https://github.com/user-attachments/assets/ba288e4e-cbf3-4d8b-9781-f084bb836331)
+![image](https://github.com/user-attachments/assets/b114acd1-061e-4700-8d3d-25b4734a3c54)
+
 ### Assets Folder:
 This is where SWTOR stores the Asset Archives. The .tor files.
 - If you're using the SWTOR Launcher from the SWTOR website, that's usually something like "X:\Program Files (x86)\Electronic Arts\BioWare\Star Wars - The Old Republic\Assets"
@@ -51,12 +54,15 @@ X: is a variable, depending on which drive you installed SWTOR to. Your install 
 ![image](https://github.com/user-attachments/assets/d564f7df-7a34-47a8-ab91-c36e90f9aa3d)
 
 	
-### -> Live Radio Button
+### > Live Radio Button
 - Tells extracTOR that you want to extract files from the "main" version of the game.
 		
-### -> PTS Radio Button
+### > PTS Radio Button
 - Tells extracTOR that you want to extract files from the PTS version of the game.
-	
+
+### > Beta Radio Button
+- Tells extracTOR that you want to extract files from old beta versions of the game.
+ 
 ### Check Hash List:
 - Compares the "hashes.bin" date and the Jedipedia hash list date.
    - Prompts you to download the Jedipedia file if it is newer than the one you have.
@@ -67,15 +73,22 @@ X: is a variable, depending on which drive you installed SWTOR to. Your install 
 ### Extract:
 - Performs a file extraction.
    - Extracts the files from the .tor archives if the file exists in the hash list.
-     - Using -> Live:
+     - Using > Live:
        Extracted files will be placed into the folder you've selected in the "Output Folder" text box.
-       For example, my Live extraction is placed in: "E:\swtor\extract\" and all the games Live files are placed in the "resources" folder inside.
+       For example, my Live extraction is placed in: "E:\swtor\extract\" and all the games Live files are placed in the "resources" folder inside       
 ![image](https://github.com/user-attachments/assets/613b7874-7cb2-4652-a2c2-45e31eb619e5)
 
-     - Using -> PTS:
+     - Using > PTS:
        Extracted files will be placed in a "pts" folder INSIDE the folder you've selected in the "Output Folder" text box.
-       For example, my PTS extraction is placed in: "E:\swtor\extract\" and all the games PTS files are placed in the "resources" folder inside the "pts" folder.
+       For example, my PTS extraction is placed in: "E:\swtor\extract\" and all the games PTS files are placed in the "resources" folder inside the "pts" folder.     
 ![image](https://github.com/user-attachments/assets/b9520001-9814-49ec-abe0-abce1430da63)
+
+     - Using > Beta:
+       Extracted files will be placed into a "beta" folder INSIDE the folder you've selected in the "Output Folder" text box.
+       For example, my Beta extraction is placed in "C:\" and all the games Beta files are placed in the "resources" folder inside the "beta" folder.
+
+        ![image](https://github.com/user-attachments/assets/b5a43a74-7b78-4514-bdf4-cf01673f4cf3)
+
 
 When extraction finishes a message box will pop up letting you know that extraction is complete and where you can find your extracted files.
 ![image](https://github.com/user-attachments/assets/febd2d97-5a72-452b-b724-77c832697f82)
