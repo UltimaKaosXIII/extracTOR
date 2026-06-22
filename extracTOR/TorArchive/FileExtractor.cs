@@ -1,200 +1,248 @@
 ﻿using extracTOR;
+using extracTOR.Helper;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
-using p = System.Diagnostics.Process;
+using extracTOR.Helper.Constants;
+using static extracTOR.TORArchive;
 
-public class FileExtractor
+namespace extracTOR
 {
-    private Dictionary<ulong, string> LoadHashDictionary()
+    public class FileExtractor
     {
-        try
+        public int _archivesFinished;
+        private readonly HashDictionary _hashDictionary = new();
+        private ExtractionCounters counters = new ExtractionCounters();
+        public async Task LoadHashDictionary(string hashFilePath)
         {
-            var dictionary = new Dictionary<ulong, string>();
-            using (BinaryReader hashReader = new(File.Open($"{Directory.GetCurrentDirectory()}\\hashes.bin", FileMode.Open)))
+            try
             {
+                using var hashReader = new BinaryReader(File.Open(hashFilePath, FileMode.Open));
                 while (hashReader.BaseStream.Position < hashReader.BaseStream.Length)
                 {
-                    dictionary.Add(hashReader.ReadUInt64(), hashReader.ReadString(true));
+                    ulong hash = hashReader.ReadUInt64();
+                    string path = hashReader.ReadString(true);
+                    _hashDictionary.Add(hash, path);
                 }
             }
-            return dictionary;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Exception caught: {ex.Message}\n{ex.StackTrace}");
-            Debugger.Break();
-            return null;
-        }
-    }
-    double pct = 0;
-    public async Task<bool?> ExtractFilesAsync(IProgress<double> prg, IProgress<string>? time, IProgress<long>? mem, IProgress<string>? totalFile, IProgress<string>? extr, IProgress<int>? arcsPrg, string assetsPath, string outPath, bool pts, bool beta, Stopwatch sw, bool isRunning)
-    {
-        int archivesFinished = 0;
-        bool success = false;
-        try
-        {
-            if (mem != null)
+            catch (Exception ex)
             {
-                async Task UpdatePeakMemAsync()
-                {
-                    while (isRunning)
-                    {
-                        mem?.Report(p.GetCurrentProcess().PeakWorkingSet64);
-                        await Task.Delay(100);
-                    }
-                }
-                var memTask = UpdatePeakMemAsync();
+                Debug.WriteLine($"Exception caught: {ex.Message}\n{ex.StackTrace}");
             }
-            if (time != null)
+        }
+
+        public async Task<bool> ExtractFilesAsync(
+            ProgressTrackers progress,
+            string assetsPath,
+            string outPath,
+            bool pts,
+            bool beta,
+            Stopwatch stopwatch)
+        {
+            var success = false;
+            var archivesFinished = 0;
+            var isRunning = true;
+
+            try
             {
-                async Task UpdateTimerAsync()
-                {
-                    while (isRunning)
-                    {
-                        time?.Report(sw.Elapsed.ToString(@"hh\:mm\:ss\.ff"));
-                        await Task.Delay(10);
-                    }
-                }
+                stopwatch.Restart();
+                var archiveFiles = GetArchiveFiles(assetsPath, pts);
+                ValidateArchiveCount(archiveFiles, pts);
 
-                var timerTask = UpdateTimerAsync();
+                await StartProgressMonitoring(progress, stopwatch, () => isRunning);
+                int totalFiles = 0;
+                int processedFiles = 0;
+                totalFiles = await Task.Run(() => ProcessArchiveHeaders(archiveFiles));
+                progress.TotalFilesProgress.Report(totalFiles.ToString());
+                var processorCount = 0;
+                if (Environment.ProcessorCount < 16)
+                {
+                    processorCount = Environment.ProcessorCount / 2;
+                }
+                else if (Environment.ProcessorCount >= 16)
+                {
+                    processorCount = Environment.ProcessorCount - 2;
+                }
+                var extractionOptions = CreateParallelOptions(processorCount);
+
+                await PerformParallelExtraction(
+                    archiveFiles,
+                    extractionOptions,
+                    progress,
+                    pts,
+                    beta,
+                    outPath,
+                    stopwatch,
+                    counters,
+                    totalFiles);
+
+                success = this._archivesFinished == archiveFiles.Count;
+            }
+            catch (Exception ex)
+            {
+                HandleException(ex);
+                success = false;
+            }
+            finally
+            {
+                StopProgressMonitoring(progress, stopwatch, ref isRunning);
             }
 
-            List<string> archiveFiles = new();
+            return success;
+        }
 
+        private List<string> GetArchiveFiles(string assetsPath, bool pts)
+        {
+            var archiveFiles = new List<string>();
             var allTors = Directory.EnumerateFiles(assetsPath, "*.tor", SearchOption.TopDirectoryOnly);
 
-            if (pts)
-            {
-                archiveFiles.AddRange(allTors.Where(file => Path.GetFileName(file).Contains("_test_")));
-                string ptsClient = Path.Combine(Directory.GetParent(assetsPath).ToString(), "publictest\\retailclient");
-                string gfxTor = Path.Combine(ptsClient, "main_gfx_1.tor");
-                if (File.Exists(gfxTor))
-                {
-                    archiveFiles.Add(gfxTor);
-                }
-            }
-            else
-            {
-                archiveFiles.AddRange(allTors.Where(file => !Path.GetFileName(file).Contains("_test_")));
-                string liveClient = Path.Combine(Directory.GetParent(assetsPath).ToString(), "swtor\\retailclient");
-                string gfxTor = Path.Combine(liveClient, "main_gfx_1.tor");
-                if (File.Exists(gfxTor))
-                {
-                    archiveFiles.Add(gfxTor);
-                }
-            }
-            if (pts && archiveFiles.Count < allTors.Count())
-            {
-                isRunning = false;
-                sw.Stop();
-                time?.Report(sw.Elapsed.ToString(@"hh\:mm\:ss\.ff"));
-                mem?.Report(p.GetCurrentProcess().PeakWorkingSet64);
-                MessageBox.Show($"An error occurred during extraction. Check your extract settings and try again.", "Extraction Setting error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return false;
-            }
-            if (!pts && archiveFiles.Count < allTors.Count())
-            {
-                isRunning = false;
-                sw.Stop();
-                time?.Report(sw.Elapsed.ToString(@"hh\:mm\:ss\.ff"));
-                mem?.Report(p.GetCurrentProcess().PeakWorkingSet64);
-                MessageBox.Show($"An error occurred during extraction. Check your extract settings and try again.", "Extraction Setting error", MessageBoxButton.OK, MessageBoxImage.Error);
+        archiveFiles.AddRange(pts
+            ? allTors.Where(f => Path.GetFileName(f).Contains("swtor_test_")).OrderBy(f => new FileInfo(f).Length)
+            : allTors.Where(f => !Path.GetFileName(f).Contains("swtor_test_")).OrderBy(f => new FileInfo(f).Length));
 
-                return false;
+            AddSpecialGraphicsArchive(archiveFiles, assetsPath, pts);
+            return archiveFiles;
+        }
+
+        private void AddSpecialGraphicsArchive(List<string> archiveFiles, string assetsPath, bool pts)
+        {
+            var parentDir = Directory.GetParent(assetsPath)?.ToString();
+            if (string.IsNullOrEmpty(parentDir)) return;
+
+            var clientPath = pts
+                ? Path.Combine(parentDir, Constants.Paths.PublicTestClient)
+            : Path.Combine(parentDir, Constants.Paths.LiveClient);
+
+            var gfxTor = Path.Combine(clientPath, Constants.Files.MainGfx);
+            if (File.Exists(gfxTor)) archiveFiles.Add(gfxTor);
+        }
+
+        private void ValidateArchiveCount(List<string> archiveFiles, bool pts)
+        {
+            var torCount = Directory.EnumerateFiles(Path.GetDirectoryName(archiveFiles[0]) ?? "", "*.tor").Count(f=>pts?f.Contains("swtor_test_"):!f.Contains("swtor_test_")) + 1;
+            if ((pts && archiveFiles.Count < torCount) || (!pts && archiveFiles.Count < torCount))
+            {
+                throw new InvalidOperationException("Archive count mismatch - check extraction settings");
             }
-            allTors = null;
-            var numFilesTotal = 0;
-            var filesProcessed = 0;
-            Dictionary<ulong, string> hashDictionary = LoadHashDictionary();
+        }
 
-            ParallelOptions options = new ParallelOptions
+        private async Task StartProgressMonitoring(
+            ProgressTrackers progress,
+            Stopwatch stopwatch,
+            Func<bool> isRunning)
+        {
+            _ = Task.Run(async () =>
             {
-                MaxDegreeOfParallelism = Environment.ProcessorCount
-            };
-
-            await Parallel.ForEachAsync(archiveFiles, options, async (archiveFile, _) =>
-            {
-                using (FileStream fs = new(archiveFile, FileMode.Open, FileAccess.Read))
-                using (BinaryReader br = new BinaryReader(fs))
+                while (isRunning())
                 {
-                    try
-                    {
-                        br.BaseStream.Seek(0, SeekOrigin.Begin);
-                        string arc = Path.GetFileNameWithoutExtension(archiveFile);
-                        var archive = new TORArchive(br, arc);
-                        Interlocked.Add(ref numFilesTotal, archive.Header.FileCount);
-                        if (totalFile != null)
-                            totalFile?.Report($"{numFilesTotal}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"Exception caught: {ex.Message}\n{ex.StackTrace}");
-                        Debugger.Break();
-                    }
+                    progress.MemoryProgress.Report(Process.GetCurrentProcess().PeakWorkingSet64);
+                    progress.TimeProgress.Report(stopwatch.Elapsed.ToString(@"hh\:mm\:ss"));
+                    await Task.Delay(100);
                 }
             });
+        }
 
-
-            Action reportProgress = () =>
+        private async Task<int> ProcessArchiveHeaders(
+            List<string> archiveFiles)
+        {
+            int totalFiles = 0;
+            foreach (var archiveFile in archiveFiles)
             {
-                pct = ((Interlocked.Increment(ref filesProcessed) / (double)numFilesTotal) * 100);
-                if (extr != null)
-                    extr?.Report($"{filesProcessed}");
-                prg?.Report(pct);
-            };
+                using var fs = File.Open(archiveFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var reader = new BinaryReader(fs);
 
-            ParallelOptions optionsExtract = new ParallelOptions
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount
-            };
+                var archive = new TORArchive(reader, Path.GetFileNameWithoutExtension(archiveFile));
 
-            sw.Start();
-            List<string> hashes = new();
-            await Parallel.ForEachAsync(archiveFiles, optionsExtract, async (archiveFile, _) =>
+                Interlocked.Add(ref totalFiles, archive.Header.FileCount);
+            }
+
+            return totalFiles;
+        }
+
+        private ParallelOptions CreateParallelOptions(int degreeOfParallelism) => new()
+        {
+            MaxDegreeOfParallelism = Math.Max(1, degreeOfParallelism)
+        };
+
+        private async Task PerformParallelExtraction(
+            List<string> archiveFiles,
+            ParallelOptions options,
+            ProgressTrackers progress,
+            bool pts,
+            bool beta,
+            string outPath,
+            Stopwatch stopwatch,
+            ExtractionCounters counters,
+            int totalFiles)
+        {
+            await Parallel.ForEachAsync(archiveFiles, options, async (archiveFile, _) =>
             {
                 try
                 {
-                    using (FileStream fs = new(archiveFile, FileMode.Open, FileAccess.Read))
-                    using (BinaryReader br = new(fs))
-                    {
-                        br.BaseStream.Seek(0, SeekOrigin.Begin);
-                        string arc = Path.GetFileNameWithoutExtension(archiveFile);
-                        var archive = new TORArchive(br, arc);
-                        await archive.ExtractEntriesAsync(br, arc, archiveFile, pts, beta, hashDictionary, outPath, reportProgress, hashes);
-                    }
-                    if (arcsPrg != null)
-                    {
-                        Interlocked.Increment(ref archivesFinished);
-                        arcsPrg?.Report(archivesFinished);
-                    }
+                    using var fs = new FileStream(archiveFile, 
+                        FileMode.Open, 
+                        FileAccess.Read, 
+                        FileShare.Read,
+                        4096,
+                        FileOptions.Asynchronous | FileOptions.RandomAccess);
+                    using var reader = new BinaryReader(fs);
+
+                    var archive = new TORArchive(reader, Path.GetFileNameWithoutExtension(archiveFile));
+                    await archive.ExtractEntriesAsync(
+                        archiveFile,
+                        pts,
+                        beta,
+                        _hashDictionary,
+                        outPath,
+                        () => UpdateProgress(progress, totalFiles, counters));
+
+                    Interlocked.Increment(ref _archivesFinished);
+                    counters.IncrementArchivesFinished();
+                    progress.ArcsProgress.Report(counters.ArchivesFinished);
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Exception caught: {ex.Message}\n{ex.StackTrace}");
-                    Debugger.Break();
+                    HandleException(ex);
                 }
             });
-            prg?.Report(100);
+            progress.ExtractionProgress.Report(100);
+        }
 
-        }
-        catch (Exception ex)
+        private void UpdateProgress(
+            ProgressTrackers progress,
+            int totalFiles,
+            ExtractionCounters counters)
         {
-            Debug.WriteLine($"Exception caught: {ex.Message}\n{ex.StackTrace}");
-            Debugger.Break();
+            counters.IncrementFilesExtracted();
+            progress.ExtractedFilesProgress.Report($"{counters.ProcessedFiles}");
+            progress.ExtractionProgress.Report((counters.ProcessedFiles / (double)totalFiles) * 100.0);
         }
-        finally
+
+        private void StopProgressMonitoring(
+            ProgressTrackers progress,
+            Stopwatch stopwatch,
+            ref bool isRunning)
         {
             isRunning = false;
-            sw.Stop();
-            time?.Report(sw.Elapsed.ToString(@"hh\:mm\:ss\.ff"));
-            mem?.Report(p.GetCurrentProcess().PeakWorkingSet64);
+            stopwatch.Stop();
+            progress.TimeProgress.Report(stopwatch.Elapsed.ToString(@"hh\:mm\:ss\.ff"));
+            progress.MemoryProgress.Report(Process.GetCurrentProcess().PeakWorkingSet64);
         }
-        if (archivesFinished == 0)
-            success = false;
-        else if (archivesFinished > 0)
-            success = true;
 
-        return success;
+        private void HandleException(Exception ex)
+        {
+            Debug.WriteLine($"Error: {ex.Message}\n{ex.StackTrace}");
+        }
+
+        private class ExtractionCounters
+        {
+            private int _archivesFinished;
+            private int _processedFiles;
+            public int ArchivesFinished => _archivesFinished;
+            public int ProcessedFiles => _processedFiles;
+            public void IncrementArchivesFinished() => Interlocked.Increment(ref _archivesFinished);
+            public void IncrementFilesExtracted() => Interlocked.Increment(ref _processedFiles);
+        }
     }
 }

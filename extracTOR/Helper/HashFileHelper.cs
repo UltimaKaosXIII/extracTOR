@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -14,12 +15,15 @@ namespace extracTOR.Helper
     public class HashFileHelper
     {
         private MainWindow _m;
+
         public HashFileHelper(MainWindow mainWindow)
         {
             _m = mainWindow;
         }
+
         private string remoteURL = "http://swtor.jedipedia.net/ajax/getFileNames.php?env=all&format=easymyp";
         private string localFile = $"{Environment.CurrentDirectory}\\hashes.bin";
+
         public async Task<DateTime?> GetHashModifiedTimeAsync(string fileUrl)
         {
             using (HttpClient client = new HttpClient())
@@ -57,12 +61,13 @@ namespace extracTOR.Helper
                 return false;
             }
         }
-        public async Task<string?> CompareFilesAsync(string local, string remote)
+
+        public async Task<string> CompareFilesAsync(string local, string remote)
         {
             string localPath = local;
             string remotePath = remote;
 
-            DateTime? localMod = GetLocalLastMod(localPath);
+            DateTime? localMod = GetLocalLastMod(local);
             DateTime? remoteMod = await GetHashModifiedTimeAsync(remotePath);
             if (!File.Exists(local))
             {
@@ -85,39 +90,56 @@ namespace extracTOR.Helper
             }
         }
 
-        public async Task<bool?> CheckHashList()
+        public async Task<bool> CheckHashList(IProgress<double> progress)
         {
-            bool? res = true;
-            await Task.Run(async () =>
+            try
             {
-                string local = Path.Combine(Directory.GetCurrentDirectory(), "hashes.bin");
-                Task<string?> mostRecent = CompareFilesAsync(local, remoteURL);
-                if (mostRecent.Result.Contains("LOCAL"))
+                progress.Report(10);
+                var local = Path.Combine(Directory.GetCurrentDirectory(), "hashes.bin");
+                var comparisonResult = await CompareFilesAsync(local, remoteURL);
+                if (comparisonResult.Contains("LOCAL"))
                 {
-                    res = true;
-                    return res;
+                    progress.Report(100);
+                    return true;
                 }
-                else if (mostRecent.Result.Contains("REMOTE"))
+                if (comparisonResult.Contains("REMOTE"))
                 {
-                    MessageBoxResult result = MessageBox.Show("Hash List update required. Download now?", "", MessageBoxButton.YesNo);
-                    if (result == MessageBoxResult.Yes)
-                    {
-                        res = await DLHashList();
-                    }
-                    return res;
+                    progress.Report(30);
+                    var downloadResult = await ShowDownloadPromptAndExecute(progress);
+                    progress.Report(100);
+                    return downloadResult;
                 }
-                else
-                {
-                    res = null;
-                    return res;
-                }
-            });
-            return res;
+                progress.Report(100);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Excpetion in CheckHashList(progress): {ex.Message}");
+                progress.Report(0);
+                return false;
+            }
         }
 
-        public async Task<bool?> DLHashList()
+        private async Task<bool> ShowDownloadPromptAndExecute(IProgress<double> progress)
         {
-            bool? result = false;
+            var result = MessageBox.Show(
+                "Hash List Update required. Download now?",
+                "Update Available",
+                MessageBoxButton.YesNo);
+            if (result != MessageBoxResult.Yes) return false;
+            var tmp = Path.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt");
+            var success = await DownloadHashListAsync(progress);
+            if (success)
+            {
+                progress.Report(90);
+                return await BinarizeHashListAsync(tmp, progress);
+            }
+            return false;
+        }
+
+        public async Task<bool> DLHashList()
+        {
+            bool result = false;
             await Task.Run(async () =>
             {
                 string dlPath = Path.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt");
@@ -152,9 +174,48 @@ namespace extracTOR.Helper
             return result;
         }
 
-        public async Task<bool?> DownloadHashList(string path, string url)
+        public async Task<bool> DownloadHashListAsync(IProgress<double> progress)
         {
-            bool? result = false;
+            string dlPath = Path.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt");
+            return await DownloadHashListAsync(dlPath, remoteURL, progress);
+        }
+
+        public async Task<bool> DownloadHashListAsync(string path, string url, IProgress<double> progress)
+        {
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                    response.EnsureSuccessStatusCode();
+                    using (var stream = await response.Content.ReadAsStreamAsync())
+                    using (var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
+                    {
+                        var totalBytes = response.Content.Headers.ContentLength ?? 0;
+                        var buffer = new byte[4096];
+                        var totalRead = 0L;
+                        var bytesRead = 0;
+                        while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                        {
+                            await fileStream.WriteAsync(buffer, 0, bytesRead);
+                            progress.Report(totalBytes > 0 ? (double)totalRead / totalBytes * 100 : 0);
+                            totalRead += bytesRead;
+                        }
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Excpetion in DownloadHashListAsync(progress): {ex.Message}");
+                progress.Report(0);
+                return false;
+            }
+        }
+
+        public async Task<bool> DownloadHashList(string path, string url)
+        {
+            bool result = false;
             await Task.Run(async () =>
             {
                 using (HttpClient client = new HttpClient())
@@ -162,11 +223,11 @@ namespace extracTOR.Helper
                     try
                     {
                         HttpResponseMessage resp = await client.GetAsync(url);
-                        resp.EnsureSuccessStatusCode();
+                        resp.EnsureSuccessStatusCode();  // This will throw if the response code is not 2xx
                         byte[] fileBuffer = await resp.Content.ReadAsByteArrayAsync();
 
                         if (!File.Exists(path))
-                            File.Create(path).Dispose();
+                            File.Create(path).Dispose(); // Properly dispose the file stream
                         else
                             File.Delete(path);
 
@@ -192,12 +253,54 @@ namespace extracTOR.Helper
             return File.GetLastWriteTimeUtc(filePath);
         }
 
-        public async void BinarizeHashList(string path)
+        public async Task<bool> BinarizeHashListAsync(string txtPath, IProgress<double> progress)
         {
-            await BinarizeHashListAsync(path);
+            const int bufferSize = 4096;
+            var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
+            try
+            {
+                if (File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "hashes.bin")))
+                    File.Delete(Path.Combine(Directory.GetCurrentDirectory(), "hashes.bin"));
+                using (var fs = new FileStream(txtPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, true))
+                using (var reader = new StreamReader(fs))
+                using (var bw = new BinaryWriter(File.OpenWrite(Path.Combine(Directory.GetCurrentDirectory(), "hashes.bin"))))
+                {
+                    var totalBytes = fs.Length;
+                    var bytesProcessed = 0L;
+                    string line;
+                    while ((line = await reader.ReadLineAsync()) != null)
+                    {
+                        bytesProcessed += line.Length + Environment.NewLine.Length;
+                        progress.Report((double)bytesProcessed / totalBytes * 100);
+                        string[] parts = line.Split('#');
+                        if (parts.Length == 4)
+                        {
+                            uint ph = Convert.ToUInt32(parts[0], 16);
+                            uint sh = Convert.ToUInt32(parts[1], 16);
+                            ulong hash = ((ulong)ph << 32) | sh;
+                            byte[] bytes = BitConverter.GetBytes(hash);
+                            bw.Write(hash);
+                            string filename = parts[2] + "\0";
+                            byte[] filenameBytes = Encoding.UTF8.GetBytes(filename);
+                            bw.Write((int)filenameBytes.Length);
+                            bw.Write(filenameBytes);
+                            bw.Flush();
+                        }
+                    }
+                }
+                if (File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "hashes.bin")))
+                {
+                    File.SetLastWriteTime(Path.Combine(Directory.GetCurrentDirectory(), "hashes.bin"), DateTime.Now);
+                }
+                return true;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
-        public async Task<bool?> BinarizeHashListAsync(string txtPath)
+        public async Task<bool> BinarizeHashListAsync(string txtPath)
         {
             bool res = false;
             await Task.Run(() =>

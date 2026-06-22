@@ -1,105 +1,228 @@
-﻿using System.Diagnostics;
+﻿using System.Buffers;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
-using System.Linq.Expressions;
 using ZstdSharp;
 
 namespace extracTOR
 {
     public class TORArchive
     {
-        public TORHeader Header { get; private set; }
-        public TORArchive(BinaryReader br, string arc)
+        public TORHeader Header { get; }
+        
+        private const int BufferSize = 81920;
+
+        public TORArchive(BinaryReader reader, string archiveName)
         {
-            Header = TORHeader.ReadHeader(br, arc);
+            Header = TORHeader.ReadHeader(reader, archiveName);
         }
+        
         public async Task ExtractEntriesAsync(
-            BinaryReader br,
-            string arc,
-            string archiveFile,
-            bool pts,
-            bool beta,
-            Dictionary<ulong, string> hashList,
-            string outPath,
-            Action reportProgress,
-            List<string> hashes)
+        string archiveFilePath,
+        bool isPts,
+        bool isBeta,
+        HashDictionary hashDictionary,
+        string outputRootPath,
+        Action progressCallback)
+        {
+            using (var archiveStream = new FileStream(archiveFilePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                BufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            using (var reader = new BinaryReader(archiveStream))
+            {
+                long nextTableOffset = Header.IndexOffset;
+                while (nextTableOffset != 0)
+                {
+                    archiveStream.Seek(nextTableOffset, SeekOrigin.Begin);
+                    int tableCapacity = reader.ReadInt32();
+                    nextTableOffset = reader.ReadInt64();
+                    for (int i = 0; i < tableCapacity; i++)
+                    {
+                        FileEntry entry = new FileEntry();
+                        long nextEntryOffset = 0;
+                        try
+                        {
+                            bool validEntry = false;
+                            var offset = reader.ReadInt64();
+                            var offsetAdjust = reader.ReadInt32();
+                            var entryOffset = reader.BaseStream.Position;
+                            reader.BaseStream.Position = offset;
+                            uint dataCheck = reader.ReadUInt32();
+                            if (dataCheck == 0x00200002)
+                            {
+                                reader.BaseStream.Position = entryOffset;
+                            }
+                            else
+                            {
+                                entry = null;
+                                break;
+                            }
+                            entry.DataOffset = offset + offsetAdjust;
+                            entry.CompressedSize = reader.ReadInt32();
+                            entry.DecompressedSize = reader.ReadInt32();
+                            entry.Hash = reader.ReadUInt64();
+                            entry.CRC = reader.ReadUInt32();
+                            entry.CompressionMethod = reader.ReadInt16();
+                            nextEntryOffset = reader.BaseStream.Position;
+                        }
+                        catch(Exception ex)
+                        {
+                            Debug.WriteLine($"Exception in FileEntry: {ex.Message}\n{ex.StackTrace}");
+                            throw;
+                        }
+                        if (hashDictionary.TryGetPath(entry.Hash, out var relativePath) &&
+                                ShouldProcessFile(relativePath, Path.GetFileName(archiveFilePath)))
+                        {
+                            await ProcessEntryAsync(
+                                    archiveStream,
+                                    entry,
+                                    entry.DataOffset,
+                                    ConstructOutputPath(outputRootPath, relativePath, isPts, isBeta),
+                                    progressCallback);
+                        }
+                        reader.BaseStream.Seek(nextEntryOffset - reader.BaseStream.Position, SeekOrigin.Current);
+                    }
+                }
+            }
+        }
+
+        private bool ShouldProcessFile(string relativePath, string archiveFileName)
+        {
+            if (string.Equals(relativePath, archiveFileName, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return !relativePath.Contains("metadata.bin") &&
+                   !relativePath.Contains("ft.sig") &&
+                   !relativePath.Contains("groupmanifest.bin");
+        }
+
+        private string ConstructOutputPath(string rootPath, string relativePath, bool isPts, bool isBeta)
+        {
+            var basePath = isPts ? Path.Combine(rootPath, "pts") :
+                          isBeta ? Path.Combine(rootPath, "beta") :
+                                   rootPath;
+            relativePath = relativePath.Replace('/', '\\');
+            var fullPath = $"{basePath}{relativePath}";
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            return fullPath;
+        }
+
+        private async Task ProcessEntryAsync(
+        FileStream archiveStream,
+        FileEntry entry,
+        long dataOffset,
+        string outputPath,
+        Action progressCallback)
+        {
+            using (var outputStream = new FileStream(outputPath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                BufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                //long pos = archiveStream.Position;
+                archiveStream.Seek(entry.DataOffset, SeekOrigin.Begin);
+                if (entry.IsCompressed)
+                {
+                    await DecompressAsync(archiveStream, outputStream, entry);
+                }
+                else
+                {
+                    await CopyUncompressedAsync(archiveStream, outputStream, entry);
+                }
+                progressCallback();
+            }
+        }
+        private async Task DecompressAsync(FileStream input, FileStream outputStream, FileEntry entry)
         {
             try
             {
-                br.BaseStream.Seek(Header.IndexOffset, SeekOrigin.Begin);
-                var nextTableOffset = Header.IndexOffset;
-                while (nextTableOffset != 0 && br.BaseStream.Position < br.BaseStream.Length)
+                switch (Header.Version)
                 {
-                    // read table info
-                    int tableCapacity = br.ReadInt32(); // read table capacity
-                    nextTableOffset = br.ReadInt64(); // read next table offset
-                    for (int i = 0; i < tableCapacity; ++i)
-                    {
-                        (FileEntry? entry, long nextPos) = FileEntry.ReadEntry(br, arc, nextTableOffset);
-                        if (entry == null && nextTableOffset == 0)
+                    case 5:
                         {
-                            break;
+                            await using var decompressor = new ZLibStream(input, CompressionMode.Decompress, leaveOpen: true);
+                            await decompressor.CopyToAsync(outputStream, BufferSize);
                         }
-                        else
-                        {
-
-                            string output = @"C:\Users\Ben\Desktop\extracTOR_output.txt";
-                            if (entry != null && entry.Hash != 0)
-                            {
-                                if (hashList.TryGetValue(entry.Hash, out var hashPath))
-                                {
-                                    if (hashPath.Contains("metadata.bin") || hashPath.Contains("ft.sig") || hashPath.Contains("groupmanifest.bin"))
-                                    {
-                                        hashPath = $"{arc}_{hashPath}";
-                                    }
-                                    hashes.Add($"{entry.Hash:X}#{hashPath}#DEADBEEF");
-                                }
-                                else
-                                {
-                                    hashes.Add($"{entry.Hash:X}##DEADBEEF");
-                                }
-                                Debug.WriteLine($"Closing sw");
-                            }
-                            if (nextPos != 0)
-                                br.BaseStream.Seek(nextPos, SeekOrigin.Begin);
-                            else continue;
-                        }
-                    }
-                    if (nextTableOffset == 0)
                         break;
-                    else
-                        br.BaseStream.Seek(nextTableOffset, SeekOrigin.Begin);
+                    case 6:
+                        {
+                            byte[] b = new byte[entry.CompressedSize];
+                            await input.ReadAsync(b, 0, entry.CompressedSize);
+                            await using var decompressor = new DecompressionStream(new MemoryStream(b), entry.CompressedSize, leaveOpen: true);
+                            await decompressor.CopyToAsync(outputStream, BufferSize);
+                        }
+                        break;
+                    default:
+                        throw new NotSupportedException();
                 }
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                Debug.WriteLine($"Exception caught: {ex.Message}\n{ex.StackTrace}");
+                Debug.WriteLine($"Exception caught in DecompressAsync: {e.Message}\n\n{e.StackTrace}");
                 Debugger.Break();
-                //throw;
+                throw;
+            }
+        }
+        private async Task CopyUncompressedAsync(FileStream input, FileStream outputStream, FileEntry entry)
+        {
+            var bytesRemaining = entry.CompressedSize;
+            var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+            try
+            {
+                while (bytesRemaining > 0)
+                {
+                    var readSize = Math.Min(buffer.Length, bytesRemaining);
+                    var bytesRead = await input.ReadAsync(buffer, 0, readSize);
+                    if (bytesRead == 0)
+                        throw new EndOfStreamException("Unexpected end of stream.");
+                    await outputStream.WriteAsync(buffer, 0, bytesRead);
+                    bytesRemaining -= bytesRead;
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }
     }
+
     public class TORHeader
     {
-        public int Magic { get; set; }
-        public int Version { get; set; }
-        public int Endian { get; set; }
-        public long IndexOffset { get; set; }
-        public int Capacity { get; set; }
-        public int FileCount { get; set; }
-        public static TORHeader ReadHeader(BinaryReader br, string arc)
+        public int MagicNumber { get; init; }
+        public int Version { get; init; }
+        public int Endianness { get; init; }
+        public long IndexOffset { get; init; }
+        public int Capacity { get; init; }
+        public int FileCount { get; init; }
+
+        public static TORHeader ReadHeader(BinaryReader reader, string archiveName)
         {
-            br.BaseStream.Seek(0, SeekOrigin.Begin); //read from 0x0
-            var header = new TORHeader()
+            reader.BaseStream.Seek(0, SeekOrigin.Begin);
+
+            return new TORHeader
             {
-                Magic = br.ReadInt32(),
-                Version = br.ReadInt32(),
-                Endian = br.ReadInt32(),
-                IndexOffset = br.ReadInt64(),
-                Capacity = br.ReadInt32(),
-                FileCount = br.ReadInt32()
+                MagicNumber = reader.ReadInt32(),
+                Version = reader.ReadInt32(),
+                Endianness = reader.ReadInt32(),
+                IndexOffset = reader.ReadInt64(),
+                Capacity = reader.ReadInt32(),
+                FileCount = reader.ReadInt32()
             };
-            return header;
         }
+    }
+
+    public class HashDictionary
+    {
+        private readonly ConcurrentDictionary<ulong, string> _dictionary = new();
+
+        public void Add(ulong hash, string path) => _dictionary[hash] = path;
+        public bool TryGetPath(ulong hash, out string path) =>
+            _dictionary.TryGetValue(hash, out path);
     }
 }

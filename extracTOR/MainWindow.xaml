@@ -151,7 +151,9 @@
                     Background="Red" 
                     Foreground="#B2FF0000"
                     x:Name="Exit"
-                    Click="Button_Click"
+                    Click="HandleButtonClick"
+                    Width="31"
+                    Height="31"
                     Style="{StaticResource SameBackgroundClose}">
                 <Image Source="pack://application:,,,/Resources/Img/CloseWindow.png" 
                        
@@ -189,27 +191,27 @@
                     </Grid.RowDefinitions>
                     <TextBlock Text="Assets Folder:" Grid.Column="0" Grid.Row="0" Foreground="White" Margin="5,5" VerticalAlignment="Center"/>
                     <TextBlock Text="Output Folder:" Grid.Column="0" Grid.Row="1" Foreground="White" Margin="5,5" VerticalAlignment="Center"/>
-                    <TextBox x:Name="tbxAssets" Grid.Row="0" Grid.Column="1" Margin="0,5" Background="#1a1a1a" Foreground="White" TextChanged="tbxAssetsTextChanged"/>
-                    <TextBox x:Name="tbxOutput" Grid.Row="1" Grid.Column="1" Margin="0,5" Background="#1a1a1a" Foreground="White" TextChanged="tbxOutputTextChanged"/>
-                    <Button x:Name="BtnOpenFolderAssets" Content="..." Click="Button_Click" Grid.Row="0" Grid.Column="2" Width="18" Margin="5" Style="{StaticResource SameBackground2}"/>
-                    <Button x:Name="BtnOpenFolderOutput" Content="..." Click="Button_Click" Grid.Row="1" Grid.Column="2" Width="18" Margin="5" Style="{StaticResource SameBackground2}"/>
+                    <TextBox x:Name="tbxAssets" Grid.Row="0" Grid.Column="1" Margin="0,5" Background="#1a1a1a" Foreground="White" TextChanged="Assets_TextChanged"/>
+                    <TextBox x:Name="tbxOutput" Grid.Row="1" Grid.Column="1" Margin="0,5" Background="#1a1a1a" Foreground="White" TextChanged="Output_TextChanged"/>
+                    <Button x:Name="BtnOpenFolderAssets" Content="..." Click="HandleButtonClick" Grid.Row="0" Grid.Column="2" Width="18" Margin="5" Style="{StaticResource SameBackground2}"/>
+                    <Button x:Name="BtnOpenFolderOutput" Content="..." Click="HandleButtonClick" Grid.Row="1" Grid.Column="2" Width="18" Margin="5" Style="{StaticResource SameBackground2}"/>
                     <StackPanel Orientation="Vertical" Grid.Row="0" Grid.Column="3" Grid.RowSpan="2" Margin="0,5,5,0">
-                        <RadioButton x:Name="rbLive" Checked="Live_Checked" Margin="0,0,0,5"  Content=">Live" Foreground="White" VerticalAlignment="Center" VerticalContentAlignment="Center"/>
-                        <RadioButton x:Name="rbPTS"  Checked="PTS_Checked" Margin="0,0,0,5" Content=">PTS" Foreground="White"   VerticalAlignment="Center" VerticalContentAlignment="Center"/>
-                        <RadioButton x:Name="rbBeta" Checked="Beta_Checked"  Content=">Beta" Foreground="White" VerticalAlignment="Center" VerticalContentAlignment="Center"/>
+                        <RadioButton x:Name="rbLive" Checked="RadioButton_Checked" Margin="0,0,0,5"  Content=">Live" Foreground="White" VerticalAlignment="Center" VerticalContentAlignment="Center"/>
+                        <RadioButton x:Name="rbPTS"  Checked="RadioButton_Checked" Margin="0,0,0,5" Content=">PTS" Foreground="White"   VerticalAlignment="Center" VerticalContentAlignment="Center"/>
+                        <RadioButton x:Name="rbBeta" Checked="RadioButton_Checked"  Content=">Beta" Foreground="White" VerticalAlignment="Center" VerticalContentAlignment="Center"/>
                     </StackPanel>
                     <CheckBox x:Name="chkStats" IsChecked="True" Grid.Row="3" Grid.Column="0" Content="Show Stats" Foreground="White" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="0,0,5,5"/>
                     <StackPanel Grid.Row="0" Grid.Column="5" Orientation="Vertical" x:Name="SP_Stats" HorizontalAlignment="Right" 
                                 Visibility="{Binding IsChecked, ElementName=chkStats, Converter={StaticResource b2v}}" 
                                 Margin="0,5,0,0" Grid.RowSpan="3">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <TextBlock x:Name="prgExFiles" HorizontalAlignment="Right" Foreground="White" Text="" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="prgExSep" HorizontalAlignment="Right" Foreground="White" Text=" / ~" VerticalAlignment="Center" Visibility="Collapsed"/>
-                            <TextBlock x:Name="prgExTotalFiles" HorizontalAlignment="Right" Foreground="White" Text="" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="prgExFiles" HorizontalAlignment="Right" Foreground="White" Text="0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="prgExSep" HorizontalAlignment="Right" Foreground="White" Text=" / ~" VerticalAlignment="Center" Visibility="Visible"/>
+                            <TextBlock x:Name="prgExTotalFiles" HorizontalAlignment="Right" Foreground="White" Text="0" VerticalAlignment="Center"/>
                             <TextBlock x:Name="prgExtTotalFilesText" HorizontalAlignment="Right" Margin="0,1,5,1" Foreground="White" Text=" Files" VerticalAlignment="Center"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <TextBlock x:Name="prgExPrg" HorizontalAlignment="Right" Foreground="White" Text="" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="prgExPrg" HorizontalAlignment="Right" Foreground="White" Text="{Binding Value, ElementName=prgBarExt, StringFormat={}{0:0.00}}" VerticalAlignment="Center"/>
                             <TextBlock x:Name="prgExPrgComplete" HorizontalAlignment="Right" Margin="0,1,5,1" Foreground="White" Text="% Complete" VerticalAlignment="Center"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -236,9 +238,9 @@
                             <RowDefinition/>
                             <RowDefinition/>
                         </Grid.RowDefinitions>
-                        <Button x:Name="BtnCheckHash" Click="Button_Click" Grid.Row="0" Grid.Column="0" Content="Check Hash List" Margin="0,5,3,5" Width="117" Style="{StaticResource SameBackground2}"/>
-                        <Button x:Name="BtnDLHash" Click="Button_Click" Grid.Row="0" Grid.Column="1" Content="Download Hash List" Margin="0,5,3,5" Width="117" Style="{StaticResource SameBackground2}"/>
-                        <Button x:Name="BtnExtract" Click="Button_Click" Grid.Row="1" Grid.Column="0" Content="Extract" Margin="0,5,3,5" Style="{StaticResource SameBackground2}"/>
+                        <Button x:Name="BtnCheckHash" Click="HandleButtonClick" Grid.Row="0" Grid.Column="0" Content="Check Hash List" Margin="0,5,3,5" Width="117" Style="{StaticResource SameBackground2}"/>
+                        <Button x:Name="BtnDLHash" Click="HandleButtonClick" Grid.Row="0" Grid.Column="1" Content="Download Hash List" Margin="0,5,3,5" Width="117" Style="{StaticResource SameBackground2}"/>
+                        <Button x:Name="BtnExtract" Click="HandleButtonClick" Grid.Row="1" Grid.Column="0" Content="Extract" Margin="0,5,3,5" Style="{StaticResource SameBackground2}"/>
                         <ProgressBar x:Name="prgBarExt" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="3,5,5,5" Minimum="0" Maximum="100" Background="{StaticResource ButtonBackground}">
                             <ProgressBar.Foreground>
                                 <LinearGradientBrush x:Name="prgBarGlow" StartPoint="0,0" EndPoint="1,0">
@@ -288,26 +290,26 @@
                     </Grid.RowDefinitions>
                     <TextBlock Text="GitHub:" Foreground="White" Grid.Row="0" Grid.Column="0" Margin="5,0"/>
 
-                    <Button x:Name="Github" Click="Button_Click" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left">
+                    <Button x:Name="Github" Click="HandleButtonClick" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left">
                         <TextBlock Text="https://github.com/SWTOR-Slicers" Foreground="CornflowerBlue"/>
                     </Button>
                     <TextBlock Text="Discord:" Foreground="White" Grid.Row="1" Grid.Column="0" Margin="5,0"/>
-                    <Button x:Name="Discord" Click="Button_Click" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left">
+                    <Button x:Name="Discord" Click="HandleButtonClick" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left">
                         <TextBlock Text="https://discord.gg/XfHFjSN" Foreground="CornflowerBlue"/>
                     </Button>
 
                     <TextBlock Text="Jedipedia:" Foreground="White" Grid.Row="0" Grid.Column="4" Margin="5,0" HorizontalAlignment="Right"/>
-                    <Button x:Name="Jedipedia" Click="Button_Click" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="0" Grid.Column="5" HorizontalAlignment="Left">
+                    <Button x:Name="Jedipedia" Click="HandleButtonClick" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="0" Grid.Column="5" HorizontalAlignment="Left">
                         <TextBlock Text="https://swtor.jedipedia.net" Foreground="CornflowerBlue"/>
                     </Button>
 
                     <TextBlock Text="TORCommunity:" Foreground="White" Grid.Row="1" Grid.Column="4" Margin="5,0" HorizontalAlignment="Right"/>
-                    <Button x:Name="TORCom" Click="Button_Click" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="1" Grid.Column="5" HorizontalAlignment="Left">
+                    <Button x:Name="TORCom" Click="HandleButtonClick" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="1" Grid.Column="5" HorizontalAlignment="Left">
                         <TextBlock Text="https://torcommunity.com" Foreground="CornflowerBlue"/>
                     </Button>
 
                     <TextBlock Text="Blender:" Foreground="White" Grid.Row="2" Grid.Column="4" Margin="5,0" HorizontalAlignment="Right"/>
-                    <Button x:Name="Blender" Click="Button_Click" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="2" Grid.Column="5" HorizontalAlignment="Left">
+                    <Button x:Name="Blender" Click="HandleButtonClick" Margin="0,0,5,0" Background="Transparent" Style="{StaticResource SameBackgroundButton}" Grid.Row="2" Grid.Column="5" HorizontalAlignment="Left">
                         <TextBlock Text="https://belnder.org" Foreground="CornflowerBlue" Grid.Row="2" Grid.Column="5"/>
                     </Button>
                 </Grid>
@@ -317,7 +319,8 @@
         <!-- Thanks section -->
         <Grid Grid.Row="4">
             <TextBlock Margin="10,5,0,0" VerticalAlignment="Center" Text="Thanks: Darth Atroxa, C-3PO." HorizontalAlignment="Left"/>
-            <TextBlock Margin="0,5,10,0" VerticalAlignment="Center" Text="UltimaKaosXIII - 2024" HorizontalAlignment="Right"/>
+            <TextBlock Margin="0,5,0,0" VerticalAlignment="Center" HorizontalAlignment="Center"  Text="I'll 'finish' it 'properly' soon"/>
+            <TextBlock Margin="0,5,10,0" VerticalAlignment="Center" Text="[v1.0.5] UltimaKaosXIII - 2024" HorizontalAlignment="Right"/>
         </Grid>
 
     </Grid>

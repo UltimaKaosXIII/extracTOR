@@ -1,5 +1,4 @@
 ﻿using System.IO;
-using ZstdSharp.Unsafe;
 
 namespace extracTOR
 {
@@ -13,21 +12,23 @@ namespace extracTOR
         public short CompressionMethod { get; set; }
         public bool IsCompressed => CompressionMethod == 1;
 
-        public static (FileEntry?, long) ReadEntry(BinaryReader br, string arc, long nextTableOffset)
+        public static FileEntry/*(FileEntry, long)*/ ReadEntry(BinaryReader br)
         {
-            bool verified = false;
+            bool validEntry = false;
             var offset = br.ReadInt64();
             var offsetAdjust = br.ReadInt32();
+
             long pos = br.BaseStream.Position;
-            br.BaseStream.Seek(offset, SeekOrigin.Begin);
-            byte[] checkBytes = br.ReadBytes(4);
-            if (checkBytes[0] == 2 && checkBytes[1] == 0 && checkBytes[2] == 32 && checkBytes[3] == 0)
+            br.BaseStream.Position = offset;
+            byte[] check = br.ReadBytes(4);
+
+            if (check[0] == 2 && check[1] == 0 && check[2] == 0x20 && check[3] == 0)
             {
-                verified = true;
-                br.BaseStream.Seek(pos, SeekOrigin.Begin);
+                validEntry = true;
+                br.BaseStream.Position = pos;
             }
-            if (!verified)
-                return (null, 0);
+            else return null;
+
             FileEntry entry = new FileEntry();
             entry.DataOffset = offset + offsetAdjust;
             entry.CompressedSize = br.ReadInt32();
@@ -36,7 +37,7 @@ namespace extracTOR
             entry.CRC = br.ReadUInt32();
             entry.CompressionMethod = br.ReadInt16();
             var nextEntry = br.BaseStream.Position;
-            return (entry, nextEntry);
+            return entry;
         }
     }
 }

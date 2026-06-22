@@ -1,590 +1,444 @@
 ﻿using extracTOR.Helper;
+using extracTOR.Helper.Constants;
+using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json.Linq;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using Microsoft.Extensions.Configuration;
-using p = System.IO.Path;
 using System.Windows.Media.Animation;
 
 namespace extracTOR
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
         private IConfiguration _config;
-        private string assetsFolder = "";
-        private string outputFolder = "";
-        private bool _ptsAssets;
-        private bool _betaAssets;
-        private bool _liveAssets;
-        public bool LiveAssets
-        {
-            get => _liveAssets;
-            set
-            {
-                _liveAssets = value;
-            }
-        }
-        public bool BetaAssets
-        {
-            get => _betaAssets;
-            set
-            {
-                _betaAssets = value;
-            }
-        }
-        public bool PTSAssets
-        {
-            get => _ptsAssets;
-            set
-            {
-                _ptsAssets = value;
-                //Debug.WriteLine($"PTS Assets: {value}");
-            }
-        }
+        private HashFileHelper _hashFileHelper;
+        private FileExtractor _extractor;
+        private Stopwatch _stopwatch;
+        private FolderPicker _folderPicker;
+        private ProgressTrackers progressTrackers;
 
-        private void PTS_Checked(object sender, RoutedEventArgs e)
-        {
-            PTSAssets = true;
-            BetaAssets = false;
-            LiveAssets = false;
-        }
-        private void Live_Checked(object sender, RoutedEventArgs e)
-        {
-            LiveAssets = true;
-            PTSAssets = false;
-            BetaAssets = false;
-        }
-        private void Beta_Checked(object sender, RoutedEventArgs e)
-        {
-            BetaAssets = true;
-            PTSAssets = false;
-            LiveAssets = false;
-        }
-
-        HashFileHelper hfh;
-        FolderPicker dlg;
-        FileExtractor _extractor;
-
-        private TextBox assets
-        {
-            get { return tbxAssets; }
-        }
-
-        private TextBox output
-        {
-            get { return tbxOutput; }
-        }
-
-        private ProgressBar prgExtract
-        {
-            get { return prgBarExt; }
-        }
+        public bool LiveAssets { get; set; }
+        public bool BetaAssets { get; set; }
+        public bool PTSAssets { get; set; }
 
         public MainWindow()
         {
             InitializeComponent();
-            LoadConfig();
-            chkStats.IsChecked = false;
-            rbLive.IsEnabled = true;
-            rbLive.IsChecked = true;
-            rbPTS.IsEnabled = true;
-            rbBeta.IsEnabled = true;
-            hfh = new HashFileHelper(this);
+            InitializeApplication();
+        }
+
+        #region Init
+        private void InitializeApplication()
+        {
+            LoadConfiguration();
+            InitializeUiState();
+            _hashFileHelper = new HashFileHelper(this);
             _extractor = new FileExtractor();
-            InitHashCheck();
+            progressTrackers = CreateProgressTrackers();
+            InitializeHashCheck();
         }
-
-        private async void InitHashCheck()
+        private void InitializeUiState()
         {
-            if (File.Exists(p.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt")) && !File.Exists(p.Combine(Directory.GetCurrentDirectory(), "hashes.bin")))
-            {
-                bool? binarize = await hfh.BinarizeHashListAsync(p.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt"));
-                if (binarize.Value != true)
-                    MessageBox.Show($"Error converting hash list! Contact dev!", "", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            if (!File.Exists(p.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt")) && !File.Exists(p.Combine(Directory.GetCurrentDirectory(), "hashes.bin")))
-            {
-                MessageBox.Show($"No Hash List found!\nClick the Check Hash List or Download Hash List button!", "Hash List not found", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
+            chkStats.IsChecked = true;
+            rbLive.IsChecked = true;
         }
-
-        private void LoadConfig()
+        private async void InitializeHashCheck()
         {
-            if (!File.Exists($"{Directory.GetCurrentDirectory()}\\appSettings.json"))
+            if (File.Exists(Constants.HashesFilenamePath) && !File.Exists(Constants.HashesBinPath))
             {
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine("{");
-                sb.AppendLine("  \"Paths\": {");
-                sb.AppendLine("    \"Assets\": \"\",");
-                sb.AppendLine("    \"Output\": \"\"");
-                sb.AppendLine("  }");
-                sb.AppendLine("}");
-                File.WriteAllText("appSettings.json", sb.ToString());
-            }
-            var builder = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appSettings.json", optional: false, reloadOnChange: true);
-            _config = builder.Build();
-            assets.Text = _config["Paths:Assets"];
-            output.Text = _config["Paths:Output"];
-        }
-
-        private async void Button_Click(object sender, RoutedEventArgs e)
-        {
-            Button btn = sender as Button;
-            if (btn != null)
-            {
-                switch (btn.Name)
+                if (!await _hashFileHelper.BinarizeHashListAsync(Constants.HashesFilenamePath))
                 {
-                    #region Exit
-                    case "Exit":
-                        Environment.Exit(0);
-                        break;
-                    #endregion
-                    #region Assets Folder
-                    case "BtnOpenFolderAssets":
-                        dlg = new FolderPicker();
-                        dlg.Title = "Select Assets Folder";
-                        if (dlg.ShowDialog() == true)
-                        {
-                            tbxAssets.Text = dlg.ResultPath;
-                        }
-                        break;
-                    #endregion
-                    #region Output Folder
-                    case "BtnOpenFolderOutput":
-                        dlg = new FolderPicker();
-                        dlg.Title = "Select Extraction Output Folder";
-                        if (dlg.ShowDialog() == true)
-                        {
-                            tbxOutput.Text = dlg.ResultPath;
-                        }
-                        break;
-                    #endregion
-                    #region Check Hash
-                    case "BtnCheckHash":
-                        btn.IsEnabled = false;
-                        BtnExtract.IsEnabled = false;
-                        BtnDLHash.IsEnabled = false;
-                        BtnOpenFolderAssets.IsEnabled = false;
-                        BtnOpenFolderOutput.IsEnabled = false;
-                        tbxAssets.IsEnabled = false;
-                        tbxOutput.IsEnabled = false;
-                        rbBeta.IsEnabled = false;
-                        rbLive.IsEnabled = false;
-                        rbPTS.IsEnabled = false;
-                        chkStats.IsEnabled = false;
-                        try
-                        {
-                            bool isConnected = await hfh.CheckInternetConnection();
-                            if (isConnected)
-                            {
-                                btn.Content = "Checking Hash Lists...";
-                                if (File.Exists(p.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt")))
-                                {
-                                    bool? binarize = await hfh.BinarizeHashListAsync(p.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt"));
-                                    if (binarize != true)
-                                    {
-                                        btn.Content = "Check Hash List";
-                                        MessageBox.Show($"Error converting hash list! Contact dev!", "", MessageBoxButton.OK, MessageBoxImage.Error);
-                                    }
-                                }
-                                else
-                                {
-                                    bool? cHL = await hfh.CheckHashList();
-                                    if (cHL.Value == true)
-                                    {
-                                        btn.Content = "Check Hash List";
-                                        MessageBox.Show("Hash list check complete!", "", MessageBoxButton.OK, MessageBoxImage.Information);
-                                        GC.Collect();
-                                        GC.WaitForPendingFinalizers();
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                btn.Content = "Check Hash List";
-                                MessageBox.Show("Couldn't check hash list.\nPlease check your internet connection and try again!", "No Connection", MessageBoxButton.OK, MessageBoxImage.Warning);
-                            }
-                        }
-                        finally
-                        {
-                            btn.IsEnabled = true;
-                            BtnExtract.IsEnabled = true;
-                            BtnDLHash.IsEnabled = true;
-                            BtnOpenFolderAssets.IsEnabled = true;
-                            BtnOpenFolderOutput.IsEnabled = true;
-                            tbxAssets.IsEnabled = true;
-                            tbxOutput.IsEnabled = true;
-                            rbBeta.IsEnabled = true;
-                            rbLive.IsEnabled = true;
-                            rbPTS.IsEnabled = true;
-                            chkStats.IsEnabled = true;
-                        }
-                        break;
-                    #endregion
-                    #region Download Hash
-                    case "BtnDLHash":
-                        btn.IsEnabled = false;
-                        BtnExtract.IsEnabled = false;
-                        BtnCheckHash.IsEnabled = false;
-                        BtnOpenFolderAssets.IsEnabled = false;
-                        BtnOpenFolderOutput.IsEnabled = false;
-                        tbxAssets.IsEnabled = false;
-                        tbxOutput.IsEnabled = false;
-                        rbBeta.IsEnabled = false;
-                        rbLive.IsEnabled = false;
-                        rbPTS.IsEnabled = false;
-                        chkStats.IsEnabled = false;
-                        try
-                        {
-                            bool isConnected = await hfh.CheckInternetConnection();
-                            if (isConnected)
-                            {
-                                btn.Width = 145;
-                                btn.Content = "Downloading Hash List...";
-                                bool? dLH = await hfh.DLHashList();
-                                if (dLH.Value == true)
-                                {
-                                    btn.Width = 117;
-                                    btn.Content = "Download Hash List";
-                                    MessageBox.Show("Hash list download complete!", "", MessageBoxButton.OK, MessageBoxImage.Information);
-                                    GC.Collect();
-                                    GC.WaitForPendingFinalizers();
-                                }
-                                else
-                                {
-                                    btn.Width = 117;
-                                    btn.Content = "Donwload Hash List";
-                                    MessageBox.Show("Error downloading hash list!", "", MessageBoxButton.OK, MessageBoxImage.Error);
-                                }
-                            }
-                            else
-                            {
-                                btn.Width = 117;
-                                btn.Content = "Download Hash List";
-                                MessageBox.Show("Couln't download Hash List.\nPlease check your internet connection and try again!", "No Connection", MessageBoxButton.OK, MessageBoxImage.Warning);
-                            }
-                        }
-                        finally
-                        {
-                            btn.IsEnabled = true;
-                            BtnExtract.IsEnabled = true;
-                            BtnCheckHash.IsEnabled = true;
-                            BtnOpenFolderAssets.IsEnabled = true;
-                            BtnOpenFolderOutput.IsEnabled = true;
-                            tbxAssets.IsEnabled = true;
-                            tbxOutput.IsEnabled = true;
-                            rbBeta.IsEnabled = true;
-                            rbLive.IsEnabled = true;
-                            rbPTS.IsEnabled = true;
-                            chkStats.IsEnabled = true;
-                        }
-                        break;
-                    #endregion
-                    #region Extract
-                    case "BtnExtract":
-                        GC.Collect();
-                        GC.WaitForFullGCComplete();
-                        btn.Content = "Extracting...";
-                        if (File.Exists($"{p.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt")}") && !File.Exists(p.Combine(Directory.GetCurrentDirectory(), "hashes.bin")))
-                        {
-                            bool? bHL = await hfh.BinarizeHashListAsync(p.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt"));
-                            if (bHL.Value != true)
-                            {
-                                MessageBox.Show("Error Converting hash list! Contact dev!", "", MessageBoxButton.OK, MessageBoxImage.Error);
-                                break;
-                            }
-                        }
-                        if (!File.Exists($"{p.Combine(Directory.GetCurrentDirectory(), "hashes.bin")}"))
-                        {
-                            MessageBox.Show($"Hash List not found!\nCheck Hash List!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                            break;
-                        }
-
-                        btn.IsEnabled = false;
-                        BtnCheckHash.IsEnabled = false;
-                        BtnDLHash.IsEnabled = false;
-                        tbxAssets.IsEnabled = false;
-                        tbxOutput.IsEnabled = false;
-                        BtnOpenFolderAssets.IsEnabled = false;
-                        BtnOpenFolderOutput.IsEnabled = false;
-                        rbLive.IsEnabled = false;
-                        rbPTS.IsEnabled = false;
-                        rbBeta.IsEnabled = false;
-                        prgBarExt.Value = 0;
-
-                        string outPath = tbxOutput.Text;
-                        if (outPath.Length == 3)
-                            outPath = outPath.Substring(0, outPath.Length - 1);
-
-                        if (String.IsNullOrEmpty(tbxAssets.Text))
-                        {
-                            MessageBox.Show($"No Assets directory selected!");
-                            btn.IsEnabled = true;
-                            BtnCheckHash.IsEnabled = true;
-                            BtnDLHash.IsEnabled = true;
-                            tbxAssets.IsEnabled = true;
-                            tbxOutput.IsEnabled = true;
-                            rbLive.IsEnabled = true;
-                            rbPTS.IsEnabled = true;
-                            rbBeta.IsEnabled = true;
-                            BtnOpenFolderAssets.IsEnabled = true;
-                            BtnOpenFolderOutput.IsEnabled = true;
-                            break;
-                        }
-                        if (String.IsNullOrEmpty(tbxOutput.Text))
-                        {
-                            MessageBox.Show($"Enter a path for your output folder!");
-                            btn.IsEnabled = true;
-                            BtnCheckHash.IsEnabled = true;
-                            BtnDLHash.IsEnabled = true;
-                            tbxAssets.IsEnabled = true;
-                            tbxOutput.IsEnabled = true;
-                            rbLive.IsEnabled = true;
-                            rbPTS.IsEnabled = true;
-                            rbBeta.IsEnabled = true;
-                            BtnOpenFolderAssets.IsEnabled = true;
-                            BtnOpenFolderOutput.IsEnabled = true;
-                            break;
-                        }
-                        else
-                        {
-                            prgExFiles.Text = "";
-                            prgExTotalFiles.Text = "";
-                            prgTime.Text = String.Empty;
-                            prgExPrg.Text = "";
-                            statMem.Text = "0";
-                            prgBarExt.Value = 0;
-                            prgExSep.Visibility = Visibility.Collapsed;
-                            prgExPrg.Visibility = Visibility.Collapsed;
-                            sw = new();
-                            var anim = (Storyboard)Resources["GlowWaveAnimation"];
-                            anim.Begin();
-                            string assets = tbxAssets.Text;
-                            string output = tbxOutput.Text;
-                            int estimatedTotal = 0;
-                            int extracted = 0;
-                            prgExSep.Visibility = Visibility.Collapsed;
-                            var prgProgTime = new Progress<string>(time =>
-                            {
-                                prgTime.Text = $"{time}";
-                            });
-                            var prgExtr = new Progress<double>(value =>
-                            {
-                                prgExPrg.Text = $"{value:0.00}";
-                                prgBarExt.Value = value;
-                            });
-                            var mem = new Progress<long>(pMem =>
-                            {
-                                statMem.Text = $"{pMem / (1024.0 * 1024.0 * 1024.0):F2}";
-                            });
-                            var totalFile = new Progress<string>(fOut =>
-                            {
-                                if (int.Parse(fOut) > 0)
-                                    prgExSep.Visibility = Visibility.Visible;
-                                estimatedTotal = int.Parse(fOut);
-                                prgExTotalFiles.Text = $"{estimatedTotal:N0}";
-                            });
-                            var extractedFiles = new Progress<string>(fExt =>
-                            {
-                                extracted = int.Parse(fExt);
-                                prgExFiles.Text = $"{extracted:N0}";
-                            });
-                            var arcsFinished = new Progress<int>(fArcs =>
-                            {
-                                arcsComplete.Text = $"{fArcs}";
-                            });
-                            prgExPrg.Visibility = Visibility.Visible;
-                            prgTime.Visibility = Visibility.Visible;
-                            bool? extractionSuccess = false;
-                            try
-                            {
-                                extractionSuccess = await Task.Run(async () => { return await _extractor.ExtractFilesAsync(prgExtr, prgProgTime, mem, totalFile, extractedFiles, arcsFinished, assets, output, _ptsAssets, _betaAssets, sw, true); });
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"Unhandled Exception in BtnExtract.Click: {ex.Message}\n{ex.StackTrace}");
-                                MessageBox.Show($"Unhandled Exception in BtnExtract.Click: {ex.Message}\n{ex.StackTrace}", "", MessageBoxButton.OK, MessageBoxImage.Error);
-                            }
-                            finally
-                            {
-                                if (BetaAssets)
-                                {
-                                    anim.Stop();
-                                    sw.Stop();
-                                    if (extractionSuccess.Value == true)
-                                    {
-                                        MessageBox.Show($"Extraction complete!\nYour files are located at:\n{p.Combine(outPath, "resources")}\nTime Taken: {sw.Elapsed.Hours} Hours, {sw.Elapsed.Minutes} Minutes, {sw.Elapsed.Seconds} Seconds", "Extraction Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-                                    }
-                                    else
-                                    {
-                                        // Not sure how to handle failed beta extraction...
-                                    }
-                                    sw.Reset();
-                                    btn.IsEnabled = true;
-                                    btn.Content = "Extract";
-                                    BtnCheckHash.IsEnabled = true;
-                                    BtnDLHash.IsEnabled = true;
-                                    tbxAssets.IsEnabled = true;
-                                    tbxOutput.IsEnabled = true;
-                                    rbLive.IsEnabled = true;
-                                    rbPTS.IsEnabled = true;
-                                    rbBeta.IsEnabled = true;
-                                    BtnOpenFolderAssets.IsEnabled = true;
-                                    BtnOpenFolderOutput.IsEnabled = true;
-                                }
-                                else if (PTSAssets)
-                                {
-                                    anim.Stop();
-                                    sw.Stop();
-                                    if (extractionSuccess.Value == true)
-                                    {
-                                        MessageBox.Show($"Extraction complete!\nYour files are located at:\n{p.Combine(outPath, "pts\\resources")}\nTime Taken: {sw.Elapsed.Hours} Hours, {sw.Elapsed.Minutes} Minutes, {sw.Elapsed.Seconds} Seconds", "Extraction Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-                                    }
-                                    else
-                                    {
-                                        MessageBox.Show($"Error during extraction.\nMake sure you have files with \"_test_\" in the folder:\n {assets} then try again!");
-                                    }
-                                    sw.Reset();
-                                    //_timer.Reset();
-                                    btn.IsEnabled = true;
-                                    btn.Content = "Extract";
-                                    BtnCheckHash.IsEnabled = true;
-                                    BtnDLHash.IsEnabled = true;
-                                    tbxAssets.IsEnabled = true;
-                                    tbxOutput.IsEnabled = true;
-                                    rbLive.IsEnabled = true;
-                                    rbPTS.IsEnabled = true;
-                                    rbBeta.IsEnabled = true;
-                                    BtnOpenFolderAssets.IsEnabled = true;
-                                    BtnOpenFolderOutput.IsEnabled = true;
-                                }
-                                else
-                                {
-                                    anim.Stop();
-                                    sw.Stop();
-                                    if (extractionSuccess.Value == true)
-                                    {
-                                        MessageBox.Show($"Extraction complete!\nYour files are located at:\n{p.Combine(outPath, "resources")}\nTime Taken: {sw.Elapsed.Hours:00} Hours, {sw.Elapsed.Minutes:00} Minutes, {sw.Elapsed.Seconds:00} Seconds", "Extraction Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-                                    }
-                                    else
-                                    {
-                                        MessageBox.Show($"Error during extraction.\nMake sure you have files with \"_main_\" in the folder:\n {assets} then try again!");
-                                    }
-                                    sw.Reset();
-                                    btn.IsEnabled = true;
-                                    btn.Content = "Extract";
-                                    BtnCheckHash.IsEnabled = true;
-                                    BtnDLHash.IsEnabled = true;
-                                    tbxAssets.IsEnabled = true;
-                                    tbxOutput.IsEnabled = true;
-                                    rbLive.IsEnabled = true;
-                                    rbPTS.IsEnabled = true;
-                                    rbBeta.IsEnabled = true;
-                                    BtnOpenFolderAssets.IsEnabled = true;
-                                    BtnOpenFolderOutput.IsEnabled = true;
-                                }
-                            }
-                            break;
-                        }
-                    #endregion
-                    #region Jedipedia Link
-                    case "Jedipedia":
-                        var jedipediaURL = "https://swtor.jedipedia.net";
-                        var jpInfo = new ProcessStartInfo(jedipediaURL)
-                        {
-                            UseShellExecute = true,
-                        };
-                        Process.Start(jpInfo);
-                        e.Handled = true;
-                        break;
-                    #endregion
-                    #region Blender Link
-                    case "Blender":
-                        var blenderURL = "https://blender.org";
-                        var blenderInfo = new ProcessStartInfo(blenderURL)
-                        {
-                            UseShellExecute = true,
-                        };
-                        Process.Start(blenderInfo);
-                        e.Handled = true;
-                        break;
-                    #endregion
-                    #region Discord Link
-                    case "Discord":
-                        var discordURL = "https://discord.gg/XfHFjSN";
-                        var discordInfo = new ProcessStartInfo(discordURL)
-                        {
-                            UseShellExecute = true,
-                        };
-                        Process.Start(discordInfo);
-                        e.Handled = true;
-                        break;
-                    #endregion
-                    #region Github Link
-                    case "Github":
-                        var githubURL = "https://github.com/SWTOR-Slicers";
-                        var githubInfo = new ProcessStartInfo(githubURL)
-                        {
-                            UseShellExecute = true,
-                        };
-                        Process.Start(githubInfo);
-                        e.Handled = true;
-                        break;
-                    #endregion
-                    #region TORCommunity Link
-                    case "TORCom":
-                        var torcomURL = "https://torcommunity.com";
-                        var torcomInfo = new ProcessStartInfo(torcomURL)
-                        {
-                            UseShellExecute = true,
-                        };
-                        Process.Start(torcomInfo);
-                        e.Handled = true;
-                        break;
-                        #endregion
+                    ShowErrorMessage("Error converting hash list! Contact dev!");
                 }
             }
-        }
 
-        private Stopwatch sw;
-
-        private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            DragMove();
-        }
-
-        private void tbxAssetsTextChanged(object sender, TextChangedEventArgs e)
-        {
-            if (!String.IsNullOrEmpty(assets.Text))
+            if (!File.Exists(Constants.HashesFilenamePath) && !File.Exists(Constants.HashesBinPath))
             {
-                _config["Paths:Assets"] = assets.Text;
-                var json = File.ReadAllText("appSettings.json");
-                dynamic jsonObj = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(json);
-                jsonObj["Paths"]["Assets"] = assets.Text;
-                string output = Newtonsoft.Json.JsonConvert.SerializeObject(jsonObj, Newtonsoft.Json.Formatting.Indented);
-                File.WriteAllText("appSettings.json", output);
+                ShowWarningMessage("No Hash List found!\nClick the Check Hash List or Download Hash List button!");
+            }
+        }
+        #endregion
+
+        #region config
+        private void LoadConfiguration()
+        {
+            if (!File.Exists(Constants.AppSettingsPath))
+            {
+                CreateDefaultConfiguration();
+            }
+
+            _config = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile(Constants.AppSettingsFileName)
+                .Build();
+
+            tbxAssets.Text = _config[Constants.ConfigKeys.AssetsPath];
+            tbxOutput.Text = _config[Constants.ConfigKeys.OutputPath];
+        }
+        private void CreateDefaultConfiguration()
+        {
+            var defaultConfig = new JObject(
+                new JProperty("Paths",
+                    new JObject(
+                        new JProperty("Assets", ""),
+                        new JProperty("Output", "")
+                    )
+                )
+            );
+
+            File.WriteAllText(Constants.AppSettingsPath, defaultConfig.ToString());
+        }
+
+        private void UpdateConfiguration<T>(string key, T value)
+        {
+            var json = File.ReadAllText(Constants.AppSettingsPath);
+            var config = JObject.Parse(json);
+            config["Paths"][key] = value.ToString();
+            File.WriteAllText(Constants.AppSettingsPath, config.ToString());
+        }
+
+        private void Assets_TextChanged(object sender, TextChangedEventArgs e) =>
+            UpdateConfiguration("Assets", tbxAssets.Text);
+
+        private void Output_TextChanged(object sender, TextChangedEventArgs e) =>
+            UpdateConfiguration("Output", tbxOutput.Text);
+        #endregion
+
+        #region UI and Controls
+        private void ToggleUiState(bool enable)
+        {
+            var controls = new Control[] {
+                BtnCheckHash, BtnDLHash, BtnExtract,
+                BtnOpenFolderAssets, BtnOpenFolderOutput,
+                tbxAssets, tbxOutput, rbLive, rbPTS, rbBeta
+            };
+
+            foreach (var control in controls)
+            {
+                control.IsEnabled = enable;
+            }
+        }
+        private async void HandleButtonClick(object sender, RoutedEventArgs e)
+        {
+            var button = sender as Button;
+            if (button == null) return;
+
+            try
+            {
+                switch (button.Name)
+                {
+                    case "Exit":
+                        Application.Current.Shutdown();
+                        break;
+                    case "BtnOpenFolderAssets":
+                        HandleFolderSelection(button, tbxAssets, "Select Assets Folder");
+                        break;
+                    case "BtnOpenFolderOutput":
+                        HandleFolderSelection(button, tbxOutput, "Select Extraction Output Folder");
+                        break;
+                    case "BtnCheckHash":
+                        await HandleHashCheck(button);
+                        break;
+                    case "BtnDLHash":
+                        await HandleHashDownload(button);
+                        break;
+                    case "BtnExtract":
+                        await HandleFileExtraction(button);
+                        break;
+                    case "Jedipedia":
+                    case "Blender":
+                    case "Discord":
+                    case "Github":
+                    case "TORCom":
+                        OpenWebLink(button.Name);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                HandleException(ex);
             }
         }
 
-        private void tbxOutputTextChanged(object sender, TextChangedEventArgs e)
+        private void OpenWebLink(string buttonName)
         {
-            if (!String.IsNullOrEmpty(output.Text))
+            var url = buttonName switch
             {
-                _config["Paths:Output"] = output.Text;
-                var json = File.ReadAllText("appSettings.json");
-                dynamic jsonObj = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(json);
-                jsonObj["Paths"]["Output"] = output.Text;
-                string outText = Newtonsoft.Json.JsonConvert.SerializeObject(jsonObj, Newtonsoft.Json.Formatting.Indented);
-                File.WriteAllText("appSettings.json", outText);
+                "Jedipedia" => Constants.URLs.Jedipedia,
+                "Blender" => Constants.URLs.Blender,
+                "Discord" => Constants.URLs.Discord,
+                "Github" => Constants.URLs.Github,
+                "TORCom" => Constants.URLs.TorCommunity,
+                _ => throw new ArgumentException("Unknown button")
+            };
+
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+
+        private void RadioButton_Checked(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is RadioButton radio)) return;
+
+            LiveAssets = radio == rbLive;
+            BetaAssets = radio == rbBeta;
+            PTSAssets = radio == rbPTS;
+        }
+
+        private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
+
+        private void HandleFolderSelection(Button button, TextBox targetTextBox, string dialogTitle)
+        {
+            _folderPicker = new FolderPicker { Title = dialogTitle };
+            if (_folderPicker.ShowDialog() == true)
+            {
+                targetTextBox.Text = _folderPicker.ResultPath;
             }
         }
+        #endregion
+
+        #region HashList
+        private async Task LoadHashList()
+        {
+
+            if (File.Exists(Constants.HashesFilenamePath) && !File.Exists(Constants.HashesBinPath))
+            {
+                await Task.Run(() => _hashFileHelper.BinarizeHashListAsync(Constants.HashesFilenamePath));
+            }
+
+            if (File.Exists(Constants.HashesBinPath))
+            {
+                await Task.Run(() => _extractor.LoadHashDictionary(Constants.HashesBinPath));
+            }
+
+        }
+
+        private async Task<bool> PrepareHashFile()
+        {
+            if (File.Exists(Constants.HashesFilenamePath) && !File.Exists(Constants.HashesBinPath))
+            {
+                return await _hashFileHelper.BinarizeHashListAsync(Constants.HashesFilenamePath);
+            }
+
+            if (!File.Exists(Constants.HashesBinPath))
+            {
+                ShowErrorMessage("Hash List not found!\nCheck Hash List!");
+                return false;
+            }
+
+            return true;
+        }
+
+        private async Task HandleHashCheck(Button button)
+        {
+            ToggleUiState(false);
+            button.Width = 120;
+            button.Content = "Checking Hash Lists...";
+
+            prgBarExt.Value = 0;
+            var progress = new Progress<double>(v => prgBarExt.Value = v);
+            prgBarExt.Visibility = Visibility.Visible;
+
+            try
+            {
+
+                if (!await Task.Run(() => _hashFileHelper.CheckInternetConnection()))
+                {
+                    ShowWarningMessage("Please check your internet connection!");
+                    return;
+                }
+
+                bool success = await _hashFileHelper.CheckHashList(progress);
+                ShowInfoMessage(success ? "Hash list up to date!" : "Hash list updated!");
+            }
+            finally
+            {
+                button.Width = 117;
+                button.Content = "Check Hash List";
+                prgBarExt.Value = 0;
+                ToggleUiState(true);
+            }
+        }
+
+        private async Task HandleHashDownload(Button button)
+        {
+            ToggleUiState(false);
+
+            prgBarExt.Value = 0;
+            button.Width = 140;
+            button.Margin = new Thickness(3.0, 5.0, 3.0, 5.0);
+            button.Content = "Downloading Hash List...";
+            //Content="Downloading Hash List..." Margin="3,5,3,5" Width="140"
+            var progress = new Progress<double>(v => prgBarExt.Value = v);
+            prgBarExt.Visibility = Visibility.Visible;
+
+            try
+            {
+                if (await _hashFileHelper.DownloadHashListAsync(progress))
+                    ShowInfoMessage($"Hash list downloaded successfully!");
+                else
+                    ShowErrorMessage("Download failed!");
+            }
+            finally
+            {
+                button.Width = 117;
+                button.Margin = new Thickness(3.0, 5.0, 3.0, 5.0);
+                button.Content = "Download Hash List";
+                prgBarExt.Value = 0;
+                ToggleUiState(true);
+            }
+        }
+        #endregion
+
+        #region Extraction
+        private async Task HandleFileExtraction(Button button)
+        {
+            _stopwatch = new Stopwatch();
+            ToggleUiState(false);
+            ((Storyboard)Resources["GlowWaveAnimation"]).Begin();
+
+            if (!ValidatePaths())
+            {
+                ToggleUiState(true);
+                return;
+            }
+
+            button.Content = "Checking Hashes...";
+            if (!await Task.Run(() => PrepareHashFile()))
+            {
+                ToggleUiState(true);
+                return;
+            }
+
+
+            button.Content = "Loading Hashes...";
+            await Task.Run(() => LoadHashList());
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            progressTrackers.ArcsProgress.Report(0);
+            progressTrackers.ExtractedFilesProgress.Report("0");
+            progressTrackers.TotalFilesProgress.Report("0");
+            progressTrackers.ExtractionProgress.Report(0);
+            progressTrackers.MemoryProgress.Report(0);
+            progressTrackers.TimeProgress.Report("0:00:00");
+
+            _stopwatch.Reset();
+            _stopwatch.Start();
+
+            button.Content = "Extracting...";
+            try
+            {
+                var success = await _extractor.ExtractFilesAsync(
+                    progressTrackers,
+                    tbxAssets.Text,
+                    tbxOutput.Text,
+                    PTSAssets,
+                    BetaAssets,
+                    _stopwatch
+                );
+
+                HandleExtractionResult(success);
+            }
+            finally
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                ToggleUiState(true);
+                ResetExtractionState(button);
+            }
+        }
+        private void HandleExtractionResult(bool success)
+        {
+            _stopwatch.Stop();
+            var outputPath = tbxOutput.Text.TrimEnd('\\');
+
+            if (!success)
+            {
+                ShowErrorMessage("Error during extraction!");
+                return;
+            }
+
+            var subPath = PTSAssets ? "pts\\resources" : BetaAssets ? "beta\\resources" : "resources";
+            ShowInfoMessage($"Extraction complete!\n\nFiles located at: {Path.Combine(outputPath, subPath)}\nPeak Memory Usage: {Process.GetCurrentProcess().PeakWorkingSet64 / 1024.0 / 1024.0 / 1024.0:F2} GB\nTime: {_stopwatch.Elapsed:hh\\:mm\\:ss}");
+            _stopwatch.Reset();
+        }
+
+        private bool ValidatePaths()
+        {
+            if (string.IsNullOrEmpty(tbxAssets.Text))
+            {
+                ShowErrorMessage("No Assets directory selected!");
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(tbxOutput.Text))
+            {
+                ShowErrorMessage("Enter a path for your output folder!");
+                return false;
+            }
+
+            return true;
+        }
+
+        private void ResetExtractionState(Button button)
+        {
+            _stopwatch.Reset();
+            progressTrackers.ArcsProgress.Report(0);
+            progressTrackers.ExtractedFilesProgress.Report("0");
+            progressTrackers.TotalFilesProgress.Report("0");
+            progressTrackers.ExtractionProgress.Report(0);
+            progressTrackers.MemoryProgress.Report(0);
+            progressTrackers.TimeProgress.Report("0:00:00");
+            prgBarExt.Value = 0;
+            button.Content = "Extract";
+            ToggleUiState(true);
+            ((Storyboard)Resources["GlowWaveAnimation"]).Stop();
+        }
+        #endregion
+
+        #region Error Handling
+        private void HandleException(Exception ex)
+        {
+            Debug.WriteLine($"Error: {ex.Message}\n{ex.StackTrace}");
+            ShowErrorMessage($"An error occurred: {ex.Message}");
+        }
+
+        private void ShowErrorMessage(string message) =>
+            MessageBox.Show(message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+
+        private void ShowWarningMessage(string message) =>
+            MessageBox.Show(message, "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+        private void ShowInfoMessage(string message) =>
+            MessageBox.Show(message, "Info", MessageBoxButton.OK, MessageBoxImage.Information);
+        #endregion
+
+
+        #region Progress Trackers
+        private ProgressTrackers CreateProgressTrackers() => new ProgressTrackers
+        {
+            ExtractionProgress = new Progress<double>(v => prgBarExt.Value = v),
+            TimeProgress = new Progress<string>(t => prgTime.Text = t),
+            MemoryProgress = new Progress<long>(m => statMem.Text = $"{m / 1024.0 / 1024.0 / 1024.0:F2}"),
+            TotalFilesProgress = new Progress<string>(t => prgExTotalFiles.Text = $"{int.Parse(t):N0}"),
+            ExtractedFilesProgress = new Progress<string>(e => prgExFiles.Text = $"{int.Parse(e):N0}"),
+            ArcsProgress = new Progress<int>(a => arcsComplete.Text = $"{a}")
+        };
+        #endregion
     }
+
+    public class ProgressTrackers
+    {
+        public IProgress<double> ExtractionProgress { get; set; }
+        public IProgress<string> TimeProgress { get; set; }
+        public IProgress<long> MemoryProgress { get; set; }
+        public IProgress<string> TotalFilesProgress { get; set; }
+        public IProgress<string> ExtractedFilesProgress { get; set; }
+        public IProgress<int> ArcsProgress { get; set; }
+    }
+
 }
