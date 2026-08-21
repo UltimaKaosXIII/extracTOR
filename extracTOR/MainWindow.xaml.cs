@@ -47,18 +47,11 @@ namespace extracTOR
         }
         private async void InitializeHashCheck()
         {
-            if (File.Exists(Constants.HashesFilenamePath) && !File.Exists(Constants.HashesBinPath))
-            {
-                if (!await _hashFileHelper.BinarizeHashListAsync(Constants.HashesFilenamePath))
-                {
-                    ShowErrorMessage("Error converting hash list! Contact dev!");
-                }
-            }
-
-            if (!File.Exists(Constants.HashesFilenamePath) && !File.Exists(Constants.HashesBinPath))
+            if (!File.Exists(Constants.HashesFilenamePath))
             {
                 ShowWarningMessage("No Hash List found!\nClick the Check Hash List or Download Hash List button!");
             }
+            await Task.Run(() => LoadHashList());
         }
         #endregion
 
@@ -203,26 +196,17 @@ namespace extracTOR
         private async Task LoadHashList()
         {
 
-            if (File.Exists(Constants.HashesFilenamePath) && !File.Exists(Constants.HashesBinPath))
+            if (File.Exists(Constants.HashesFilenamePath))
             {
-                await Task.Run(() => _hashFileHelper.BinarizeHashListAsync(Constants.HashesFilenamePath));
-            }
-
-            if (File.Exists(Constants.HashesBinPath))
-            {
-                await Task.Run(() => _extractor.LoadHashDictionary(Constants.HashesBinPath));
+                await Task.Run(() => _extractor.LoadHashDictionary(Constants.HashesFilenamePath));
             }
 
         }
 
         private async Task<bool> PrepareHashFile()
         {
-            if (File.Exists(Constants.HashesFilenamePath) && !File.Exists(Constants.HashesBinPath))
-            {
-                return await _hashFileHelper.BinarizeHashListAsync(Constants.HashesFilenamePath);
-            }
 
-            if (!File.Exists(Constants.HashesBinPath))
+            if (!File.Exists(Constants.HashesFilenamePath))
             {
                 ShowErrorMessage("Hash List not found!\nCheck Hash List!");
                 return false;

@@ -18,12 +18,13 @@ namespace extracTOR
         {
             try
             {
-                using var hashReader = new BinaryReader(File.Open(hashFilePath, FileMode.Open));
-                while (hashReader.BaseStream.Position < hashReader.BaseStream.Length)
+                if (File.Exists(Constants.HashesFilenamePath))
                 {
-                    ulong hash = hashReader.ReadUInt64();
-                    string path = hashReader.ReadString(true);
-                    _hashDictionary.Add(hash, path);
+                    foreach (string line in File.ReadAllLines(Constants.HashesFilenamePath))
+                    {
+                        ulong fileHash = HashLittle2.GetHash(line);
+                        _hashDictionary.Add(fileHash, line);
+                    }
                 }
             }
             catch (Exception ex)

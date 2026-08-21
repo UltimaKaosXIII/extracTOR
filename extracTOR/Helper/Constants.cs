@@ -11,8 +11,8 @@ namespace extracTOR.Helper.Constants
     {
         public const string AppSettingsFileName = "appSettings.json";
         public static readonly string AppSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), AppSettingsFileName);
-        public static readonly string HashesFilenamePath = Path.Combine(Directory.GetCurrentDirectory(), "hashes_filename.txt");
-        public static readonly string HashesBinPath = Path.Combine(Directory.GetCurrentDirectory(), "hashes.bin");
+        public static readonly string HashesFilenamePath = Path.Combine(Directory.GetCurrentDirectory(), "filenames-all.txt");
+        public static readonly string HashesBinPath = Path.Combine(Directory.GetCurrentDirectory(), "filenames-all.txt");
 
         public static class ConfigKeys
         {
