@@ -49,7 +49,6 @@ namespace extracTOR
             {
                 stopwatch.Restart();
                 var archiveFiles = GetArchiveFiles(assetsPath, pts);
-                ValidateArchiveCount(archiveFiles, pts);
 
                 await StartProgressMonitoring(progress, stopwatch, () => isRunning);
                 int totalFiles = 0;
@@ -117,15 +116,6 @@ namespace extracTOR
 
             var gfxTor = Path.Combine(clientPath, Constants.Files.MainGfx);
             if (File.Exists(gfxTor)) archiveFiles.Add(gfxTor);
-        }
-
-        private void ValidateArchiveCount(List<string> archiveFiles, bool pts)
-        {
-            var torCount = Directory.EnumerateFiles(Path.GetDirectoryName(archiveFiles[0]) ?? "", "*.tor").Count(f=>pts?f.Contains("swtor_test_"):!f.Contains("swtor_test_")) + 1;
-            if ((pts && archiveFiles.Count < torCount) || (!pts && archiveFiles.Count < torCount))
-            {
-                throw new InvalidOperationException("Archive count mismatch - check extraction settings");
-            }
         }
 
         private async Task StartProgressMonitoring(
