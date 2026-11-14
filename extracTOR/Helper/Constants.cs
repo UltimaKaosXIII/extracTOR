@@ -10,9 +10,18 @@ namespace extracTOR.Helper.Constants
     public static class Constants
     {
         public const string AppSettingsFileName = "appSettings.json";
-        public static readonly string AppSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), AppSettingsFileName);
-        public static readonly string HashesFilenamePath = Path.Combine(Directory.GetCurrentDirectory(), "filenames-all.txt");
-        public static readonly string HashesBinPath = Path.Combine(Directory.GetCurrentDirectory(), "filenames-all.txt");
+        // Folder the executable lives in. Used instead of the current working directory so that
+        // settings and the hash list are found no matter where the app is launched from
+        // (on Linux, desktop launchers usually start apps with $HOME as the working directory).
+        // When packaged as a Linux AppImage the executable runs from a read-only mount, so use the folder
+        // containing the .AppImage file instead ($APPIMAGE is set by the AppImage runtime).
+        public static readonly string AppDirectory =
+            Environment.GetEnvironmentVariable("APPIMAGE") is { Length: > 0 } appImage
+                ? Path.GetDirectoryName(appImage)!
+                : AppContext.BaseDirectory;
+        public static readonly string AppSettingsPath = Path.Combine(AppDirectory, AppSettingsFileName);
+        public static readonly string HashesFilenamePath = Path.Combine(AppDirectory, "filenames-all.txt");
+        public static readonly string HashesBinPath = Path.Combine(AppDirectory, "filenames-all.txt");
 
         public static class ConfigKeys
         {
@@ -31,8 +40,8 @@ namespace extracTOR.Helper.Constants
 
         public static class Paths
         {
-            public const string PublicTestClient = "publictest\\retailclient";
-            public const string LiveClient = "swtor\\retailclient";
+            public static readonly string PublicTestClient = Path.Combine("publictest", "retailclient");
+            public static readonly string LiveClient = Path.Combine("swtor", "retailclient");
         }
 
         public static class Files

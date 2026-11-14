@@ -6,23 +6,23 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Threading;
+using extracTOR.Helper.Constants;
 
 namespace extracTOR.Helper
 {
     public class HashFileHelper
     {
-        private MainWindow _m;
+        // UI-supplied Yes/No prompt (message, title) -> true if the user chose Yes.
+        // Keeps this class free of any WPF/Avalonia dependency so both front-ends can share it.
+        private readonly Func<string, string, Task<bool>> _confirm;
 
-        public HashFileHelper(MainWindow mainWindow)
+        public HashFileHelper(Func<string, string, Task<bool>> confirm)
         {
-            _m = mainWindow;
+            _confirm = confirm;
         }
 
         private string remoteURL = "http://swtor.jedipedia.net/ajax/getFileNames.php?env=all&format=txt";
-        private string localFile = $"{Environment.CurrentDirectory}\\filenames-all.txt";
+        private string localFile = Constants.Constants.HashesFilenamePath;
 
         public async Task<DateTime?> GetHashModifiedTimeAsync(string fileUrl)
         {
@@ -122,12 +122,10 @@ namespace extracTOR.Helper
 
         private async Task<bool> ShowDownloadPromptAndExecute(IProgress<double> progress)
         {
-            var result = MessageBox.Show(
+            var result = await _confirm(
                 "Hash List Update required. Download now?",
-                "Update Available",
-                MessageBoxButton.YesNo);
-            if (result != MessageBoxResult.Yes) return false;
-            var tmp = Path.Combine(Directory.GetCurrentDirectory(), "filenames-all.txt");
+                "Update Available");
+            if (!result) return false;
             var success = await DownloadHashListAsync(progress);
             if (success)
             {
@@ -140,7 +138,7 @@ namespace extracTOR.Helper
 
         public async Task<bool> DownloadHashListAsync(IProgress<double> progress)
         {
-            string dlPath = Path.Combine(Directory.GetCurrentDirectory(), "filenames-all.txt");
+            string dlPath = Constants.Constants.HashesFilenamePath;
             return await DownloadHashListAsync(dlPath, remoteURL, progress);
         }
 

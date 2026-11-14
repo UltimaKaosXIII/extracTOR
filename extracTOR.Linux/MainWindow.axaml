@@ -1,0 +1,235 @@
+<!--
+    Avalonia (Linux) port of ..\extracTOR\MainWindow.xaml.
+    Keep the layout in step with the WPF window when changing either one.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="extracTOR.MainWindow"
+        Title="ExtracTOR"
+        Icon="avares://extracTOR/Resources/Icon/Logo_whiteTrans500-2.ico"
+        SystemDecorations="None"
+        CanResize="False"
+        Width="730"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        Background="#333333"
+        Foreground="White"
+        FontSize="12">
+    <Window.Resources>
+        <SolidColorBrush x:Key="ButtonDisabled" Color="#1a1a1a"/>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Equivalent of the WPF "SameBackground2" style: flat bordered button. -->
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="{StaticResource ButtonDisabled}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="MinHeight" Value="22"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}" BorderBrush="White" BorderThickness="0.6">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.flat:pointerover">
+            <Setter Property="Background" Value="#444444"/>
+        </Style>
+        <Style Selector="Button.flat:disabled">
+            <Setter Property="Background" Value="#222222"/>
+            <Setter Property="Foreground" Value="DarkGray"/>
+        </Style>
+
+        <!-- Equivalent of the WPF "SameBackgroundButton" style: hyperlink-like button. -->
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.link TextBlock">
+            <Setter Property="Foreground" Value="CornflowerBlue"/>
+        </Style>
+
+        <!-- Equivalent of the WPF "SameBackgroundClose" style. -->
+        <Style Selector="Button.close">
+            <Setter Property="Background" Value="Red"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.close:pointerover">
+            <Setter Property="Background" Value="#B2FF0000"/>
+        </Style>
+
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#1a1a1a"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="RadioButton, CheckBox">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="4,0,0,0"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="34,Auto,Auto,Auto,Auto">
+
+        <!-- Header Section. Window Controls, Window Name, Window Icon -->
+        <Grid Grid.Row="0" Background="#1a1a1a" ColumnDefinitions="32,Auto,*,32,32,32"
+              PointerPressed="Window_PointerPressed">
+            <Image Grid.Column="0"
+                   Source="avares://extracTOR/Resources/Img/Logo_whiteTrans500.png"
+                   RenderOptions.BitmapInterpolationMode="HighQuality"/>
+            <TextBlock Grid.Column="1"
+                       Text="{Binding $parent[Window].Title}"
+                       VerticalAlignment="Center"/>
+            <Button Grid.Column="5"
+                    Classes="close"
+                    x:Name="Exit"
+                    Click="HandleButtonClick"
+                    HorizontalAlignment="Right"
+                    Width="31"
+                    Height="31">
+                <Image Source="avares://extracTOR/Resources/Img/CloseWindow.png"
+                       RenderOptions.BitmapInterpolationMode="HighQuality"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+            </Button>
+        </Grid>
+
+        <!-- Main section -->
+        <Border Grid.Row="1" BorderBrush="Black" BorderThickness="1" Margin="5,10">
+            <Grid ColumnDefinitions="Auto,*">
+                <Image Grid.Column="0" Width="125" Height="125"
+                       Source="avares://extracTOR/Resources/Img/Logo_whiteTrans500.png"
+                       RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                <Grid Grid.Column="1" ColumnDefinitions="Auto,*,Auto,Auto,*" RowDefinitions="Auto,Auto,*">
+                    <TextBlock Text="Assets Folder:" Grid.Column="0" Grid.Row="0" Margin="5,5" VerticalAlignment="Center"/>
+                    <TextBlock Text="Output Folder:" Grid.Column="0" Grid.Row="1" Margin="5,5" VerticalAlignment="Center"/>
+                    <TextBox x:Name="tbxAssets" Grid.Row="0" Grid.Column="1" Margin="0,5" TextChanged="Assets_TextChanged"/>
+                    <TextBox x:Name="tbxOutput" Grid.Row="1" Grid.Column="1" Margin="0,5" TextChanged="Output_TextChanged"/>
+                    <Button x:Name="BtnOpenFolderAssets" Classes="flat" Content="..." Click="HandleButtonClick" Grid.Row="0" Grid.Column="2" Width="18" Margin="5"/>
+                    <Button x:Name="BtnOpenFolderOutput" Classes="flat" Content="..." Click="HandleButtonClick" Grid.Row="1" Grid.Column="2" Width="18" Margin="5"/>
+                    <StackPanel Orientation="Vertical" Grid.Row="0" Grid.Column="3" Grid.RowSpan="2" Margin="0,5,5,0">
+                        <RadioButton x:Name="rbLive" GroupName="Env" IsCheckedChanged="RadioButton_Checked" Margin="0,0,0,5" Content=">Live"/>
+                        <RadioButton x:Name="rbPTS"  GroupName="Env" IsCheckedChanged="RadioButton_Checked" Margin="0,0,0,5" Content=">PTS"/>
+                        <RadioButton x:Name="rbBeta" GroupName="Env" IsCheckedChanged="RadioButton_Checked" Content=">Beta"/>
+                    </StackPanel>
+                    <CheckBox x:Name="chkStats" IsChecked="True" Grid.Row="2" Grid.Column="0" Content="Show Stats"
+                              VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="5,0,5,5"/>
+                    <StackPanel Grid.Row="0" Grid.Column="4" Orientation="Vertical" x:Name="SP_Stats" HorizontalAlignment="Right"
+                                IsVisible="{Binding #chkStats.IsChecked}"
+                                Margin="0,5,0,0" Grid.RowSpan="3">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock x:Name="prgExFiles" Text="0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="prgExSep" Text=" / ~" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="prgExTotalFiles" Text="0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="prgExtTotalFilesText" Margin="0,1,5,1" Text=" Files" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock x:Name="prgExPrg" Text="{Binding #prgBarExt.Value, StringFormat={}{0:0.00}}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="prgExPrgComplete" Margin="0,1,5,1" Text="% Complete" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock x:Name="prgTime" Text="" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="prgTElapsed" Margin="0,1,5,1" Text=" Elapsed" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock x:Name="statMemLabel" Text="Peak Memory Usage: " VerticalAlignment="Center"/>
+                            <TextBlock x:Name="statMem" Text="0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="statMemUnit" Margin="5,1" Text="GB" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock x:Name="arcsComplete" Text="0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="arcsCompleteLabel" Margin="5,1" Text="Archives Processed" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" ColumnDefinitions="Auto,Auto,*" RowDefinitions="*,*"
+                          VerticalAlignment="Bottom">
+                        <Button x:Name="BtnCheckHash" Classes="flat" Click="HandleButtonClick" Grid.Row="0" Grid.Column="0" Content="Check Hash List" Margin="0,5,3,5" Width="117"/>
+                        <Button x:Name="BtnDLHash" Classes="flat" Click="HandleButtonClick" Grid.Row="0" Grid.Column="1" Content="Download Hash List" Margin="0,5,3,5" Width="117"/>
+                        <Button x:Name="BtnExtract" Classes="flat" Click="HandleButtonClick" Grid.Row="1" Grid.Column="0" Content="Extract" Margin="0,5,3,5" HorizontalAlignment="Stretch"/>
+                        <ProgressBar x:Name="prgBarExt" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="3,5,5,5"
+                                     Minimum="0" Maximum="100" MinHeight="18" Background="Transparent"
+                                     BorderBrush="#555555" BorderThickness="1" CornerRadius="0">
+                            <ProgressBar.Foreground>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                                    <GradientStop Color="#FF06B025" Offset="0"/>
+                                    <GradientStop Color="LawnGreen" Offset="0.5"/>
+                                    <GradientStop Color="#FF06B025" Offset="1"/>
+                                </LinearGradientBrush>
+                            </ProgressBar.Foreground>
+                        </ProgressBar>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Useful Information -->
+        <Border Grid.Row="3" Margin="5,0" BorderBrush="Black" BorderThickness="1">
+            <Grid RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Text="Useful Information" Margin="5,5"/>
+                <Border Grid.Row="1" Background="Gray" Height="1" Margin="20,0"/>
+                <Grid Grid.Row="2" Margin="0,5,0,5" ColumnDefinitions="Auto,Auto,*,*,Auto,Auto" RowDefinitions="Auto,Auto,Auto">
+                    <TextBlock Text="GitHub:" Grid.Row="0" Grid.Column="0" Margin="5,0"/>
+                    <Button x:Name="Github" Classes="link" Click="HandleButtonClick" Margin="0,0,5,0" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left">
+                        <TextBlock Text="https://github.com/SWTOR-Slicers"/>
+                    </Button>
+                    <TextBlock Text="Discord:" Grid.Row="1" Grid.Column="0" Margin="5,0"/>
+                    <Button x:Name="Discord" Classes="link" Click="HandleButtonClick" Margin="0,0,5,0" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left">
+                        <TextBlock Text="https://discord.gg/XfHFjSN"/>
+                    </Button>
+
+                    <TextBlock Text="Jedipedia:" Grid.Row="0" Grid.Column="4" Margin="5,0" HorizontalAlignment="Right"/>
+                    <Button x:Name="Jedipedia" Classes="link" Click="HandleButtonClick" Margin="0,0,5,0" Grid.Row="0" Grid.Column="5" HorizontalAlignment="Left">
+                        <TextBlock Text="https://swtor.jedipedia.net"/>
+                    </Button>
+
+                    <TextBlock Text="TORCommunity:" Grid.Row="1" Grid.Column="4" Margin="5,0" HorizontalAlignment="Right"/>
+                    <Button x:Name="TORCom" Classes="link" Click="HandleButtonClick" Margin="0,0,5,0" Grid.Row="1" Grid.Column="5" HorizontalAlignment="Left">
+                        <TextBlock Text="https://torcommunity.com"/>
+                    </Button>
+
+                    <TextBlock Text="Blender:" Grid.Row="2" Grid.Column="4" Margin="5,0" HorizontalAlignment="Right"/>
+                    <Button x:Name="Blender" Classes="link" Click="HandleButtonClick" Margin="0,0,5,0" Grid.Row="2" Grid.Column="5" HorizontalAlignment="Left">
+                        <TextBlock Text="https://blender.org"/>
+                    </Button>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Thanks section -->
+        <Grid Grid.Row="4" Margin="0,0,0,5">
+            <TextBlock Margin="10,5,0,0" VerticalAlignment="Center" Text="Thanks: Darth Atroxa, C-3PO." HorizontalAlignment="Left"/>
+            <TextBlock Margin="0,5,0,0" VerticalAlignment="Center" HorizontalAlignment="Center" Text="I'll 'finish' it eventually"/>
+            <TextBlock Margin="0,5,10,0" VerticalAlignment="Center" Text="[v1.2.1] UltimaKaosXIII - 2026" HorizontalAlignment="Right"/>
+        </Grid>
+    </Grid>
+</Window>

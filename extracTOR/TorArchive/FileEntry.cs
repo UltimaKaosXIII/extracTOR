@@ -11,6 +11,8 @@ namespace extracTOR
         public uint CRC { get; set; }
         public short CompressionMethod { get; set; }
         public bool IsCompressed => CompressionMethod == 1;
+        // Path from the hash list (e.g. "/resources/art/..."), filled in by TORArchive.ReadEntries.
+        public string RelativePath { get; set; }
 
         public static FileEntry/*(FileEntry, long)*/ ReadEntry(BinaryReader br)
         {
