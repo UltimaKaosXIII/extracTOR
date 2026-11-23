@@ -227,7 +227,7 @@
 
         <!-- Thanks section -->
         <Grid Grid.Row="4" Margin="0,0,0,5">
-            <TextBlock Margin="10,5,0,0" VerticalAlignment="Center" Text="Thanks: Darth Atroxa, C-3PO." HorizontalAlignment="Left"/>
+            <TextBlock Margin="10,5,0,0" VerticalAlignment="Center" Text="Thanks: Darth Atroxa, C-3PO, CaptnKoda." HorizontalAlignment="Left"/>
             <TextBlock Margin="0,5,0,0" VerticalAlignment="Center" HorizontalAlignment="Center" Text="I'll 'finish' it eventually"/>
             <TextBlock Margin="0,5,10,0" VerticalAlignment="Center" Text="[v1.2.1] UltimaKaosXIII - 2026" HorizontalAlignment="Right"/>
         </Grid>
