@@ -38,6 +38,16 @@ If you have a "hashes_filename.txt" hash list from an install of Slicers GUI or 
 - If you have no internet connection ***AND*** you ***DO*** have a "hashes.bin":
    - Extraction should work perfectly fine.
 
+## Running on Linux:
+extracTOR has a separate Linux build (`extracTOR.Linux`) with the same UI, made with [Avalonia](https://avaloniaui.net). The Windows build is unchanged and still uses WPF. Both builds share the same extraction code.
+
+- **AppImage (recommended):** download `extracTOR-<version>-x86_64.AppImage`, make it executable (`chmod +x`) and run it. It bundles everything it needs, so you don't need to install .NET or FUSE. It works on Arch-based and Debian/Ubuntu-based distros.
+  - Build it yourself with `extracTOR.Linux/build-appimage.sh`. The AppImage is written to `extracTOR.Linux/dist/`.
+  - `appSettings.json` and `filenames-all.txt` are kept in the same folder as the `.AppImage` file.
+- From source (needs the .NET 8+ SDK): `dotnet run --project extracTOR.Linux`
+- The Steam (Proton) version of SWTOR usually keeps its Assets folder at:
+  `~/.steam/steam/steamapps/common/Star Wars - The Old Republic/Assets`
+
 ## The UI:
 ![image](https://github.com/user-attachments/assets/b114acd1-061e-4700-8d3d-25b4734a3c54)
 

@@ -1,0 +1,7 @@
+bin/
+obj/
+.vs/
+*.user
+
+# Linux AppImage output (built by extracTOR.Linux/build-appimage.sh)
+extracTOR.Linux/dist/

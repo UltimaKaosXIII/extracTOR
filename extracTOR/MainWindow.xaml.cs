@@ -35,7 +35,8 @@ namespace extracTOR
         {
             LoadConfiguration();
             InitializeUiState();
-            _hashFileHelper = new HashFileHelper(this);
+            _hashFileHelper = new HashFileHelper((message, title) =>
+                Task.FromResult(MessageBox.Show(message, title, MessageBoxButton.YesNo) == MessageBoxResult.Yes));
             _extractor = new FileExtractor();
             progressTrackers = CreateProgressTrackers();
             InitializeHashCheck();
@@ -64,7 +65,7 @@ namespace extracTOR
             }
 
             _config = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
+                .SetBasePath(Constants.AppDirectory)
                 .AddJsonFile(Constants.AppSettingsFileName)
                 .Build();
 
@@ -413,16 +414,6 @@ namespace extracTOR
             ArcsProgress = new Progress<int>(a => arcsComplete.Text = $"{a}")
         };
         #endregion
-    }
-
-    public class ProgressTrackers
-    {
-        public IProgress<double> ExtractionProgress { get; set; }
-        public IProgress<string> TimeProgress { get; set; }
-        public IProgress<long> MemoryProgress { get; set; }
-        public IProgress<string> TotalFilesProgress { get; set; }
-        public IProgress<string> ExtractedFilesProgress { get; set; }
-        public IProgress<int> ArcsProgress { get; set; }
     }
 
 }

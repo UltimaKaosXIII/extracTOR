@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Linux front-end for extracTOR, built with Avalonia.
+    The Windows build (WPF) lives in ..\extracTOR and is unchanged; this project only provides the UI.
+    All archive / hash / extraction logic is compiled from the shared source files in ..\extracTOR
+    (linked below, not copied), so both front-ends always run the same extraction code.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- Linux distros typically ship only the newest .NET runtime; allow running on .NET 9+ as well. -->
+    <RollForward>Major</RollForward>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>extracTOR</RootNamespace>
+    <AssemblyName>extracTOR</AssemblyName>
+    <ApplicationIcon>..\extracTOR\Resources\Icon\Logo_whiteTrans500-2.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Publish with: dotnet publish extracTOR.Linux -c Release -r linux-x64 -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <!-- The shared files were written for the WPF project; don't flood the build with its nullable warnings. -->
+    <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS1998</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.1" />
+  </ItemGroup>
+
+  <!-- Shared, UI-independent code from the Windows project. -->
+  <ItemGroup>
+    <Compile Include="..\extracTOR\Helper\Constants.cs" Link="Shared\Helper\Constants.cs" />
+    <Compile Include="..\extracTOR\Helper\Extensions.cs" Link="Shared\Helper\Extensions.cs" />
+    <Compile Include="..\extracTOR\Helper\HashFileHelper.cs" Link="Shared\Helper\HashFileHelper.cs" />
+    <Compile Include="..\extracTOR\Helper\HashLittle2.cs" Link="Shared\Helper\HashLittle2.cs" />
+    <Compile Include="..\extracTOR\TorArchive\Archive.cs" Link="Shared\TorArchive\Archive.cs" />
+    <Compile Include="..\extracTOR\TorArchive\FileEntry.cs" Link="Shared\TorArchive\FileEntry.cs" />
+    <Compile Include="..\extracTOR\TorArchive\FileExtractor.cs" Link="Shared\TorArchive\FileExtractor.cs" />
+    <Compile Include="..\extracTOR\TorArchive\ProgressTrackers.cs" Link="Shared\TorArchive\ProgressTrackers.cs" />
+  </ItemGroup>
+
+  <!-- Shared images, exposed to Avalonia as avares://extracTOR/Resources/... -->
+  <ItemGroup>
+    <AvaloniaResource Include="..\extracTOR\Resources\Img\*.png" Link="Resources\Img\%(Filename)%(Extension)" />
+    <AvaloniaResource Include="..\extracTOR\Resources\Icon\*.ico" Link="Resources\Icon\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

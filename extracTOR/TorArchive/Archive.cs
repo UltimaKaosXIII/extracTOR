@@ -1,8 +1,8 @@
-﻿using System.Buffers;
+﻿using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using Microsoft.Win32.SafeHandles;
 using ZstdSharp;
 
 namespace extracTOR
@@ -10,186 +10,204 @@ namespace extracTOR
     public class TORArchive
     {
         public TORHeader Header { get; }
-        
-        private const int BufferSize = 81920;
+
+        // Size of one entry in an index table: offset(8) headerSize(4) compressed(4) decompressed(4) hash(8) crc(4) method(2)
+        private const int EntrySize = 34;
+        // Size of an index table header: capacity(4) nextTableOffset(8)
+        private const int TableHeaderSize = 12;
 
         public TORArchive(BinaryReader reader, string archiveName)
         {
             Header = TORHeader.ReadHeader(reader, archiveName);
         }
-        
-        public async Task ExtractEntriesAsync(
-        string archiveFilePath,
-        bool isPts,
-        bool isBeta,
-        HashDictionary hashDictionary,
-        string outputRootPath,
-        Action progressCallback)
+
+        public TORArchive(SafeFileHandle handle)
         {
-            using (var archiveStream = new FileStream(archiveFilePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                BufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan))
-            using (var reader = new BinaryReader(archiveStream))
+            Header = TORHeader.ReadHeader(handle);
+        }
+
+        /// <summary>
+        /// Reads every index table in the archive and returns the entries that should be extracted,
+        /// sorted by their position in the archive so the data can then be read front-to-back
+        /// (one long sequential read instead of a seek per file - this matters a lot on HDDs).
+        /// </summary>
+        public List<FileEntry> ReadEntries(
+            SafeFileHandle handle,
+            HashDictionary hashDictionary,
+            string archiveFileName,
+            Func<string, string, bool> shouldProcessFile)
+        {
+            var entries = new List<FileEntry>(Math.Max(0, Header.FileCount));
+            var tableHeader = new byte[TableHeaderSize];
+            byte[] table = Array.Empty<byte>();
+
+            long nextTableOffset = Header.IndexOffset;
+            while (nextTableOffset != 0)
             {
-                long nextTableOffset = Header.IndexOffset;
-                while (nextTableOffset != 0)
+                ReadExactly(handle, tableHeader, nextTableOffset);
+                int capacity = BinaryPrimitives.ReadInt32LittleEndian(tableHeader);
+                long tableDataOffset = nextTableOffset + TableHeaderSize;
+                nextTableOffset = BinaryPrimitives.ReadInt64LittleEndian(tableHeader.AsSpan(4));
+
+                int tableBytes = capacity * EntrySize;
+                if (table.Length < tableBytes) table = new byte[tableBytes];
+                ReadExactly(handle, table.AsSpan(0, tableBytes), tableDataOffset);
+
+                for (int i = 0; i < capacity; i++)
                 {
-                    archiveStream.Seek(nextTableOffset, SeekOrigin.Begin);
-                    int tableCapacity = reader.ReadInt32();
-                    nextTableOffset = reader.ReadInt64();
-                    for (int i = 0; i < tableCapacity; i++)
+                    var e = table.AsSpan(i * EntrySize, EntrySize);
+                    long offset = BinaryPrimitives.ReadInt64LittleEndian(e);
+
+                    // Offset 0 marks an unused slot. Skip it but keep reading the table:
+                    // used entries can follow empty ones.
+                    if (offset == 0) continue;
+
+                    ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(e.Slice(20));
+                    if (!hashDictionary.TryGetPath(hash, out var relativePath) ||
+                        !shouldProcessFile(relativePath, archiveFileName))
+                        continue;
+
+                    entries.Add(new FileEntry
                     {
-                        FileEntry entry = new FileEntry();
-                        long nextEntryOffset = 0;
-                        try
-                        {
-                            bool validEntry = false;
-                            var offset = reader.ReadInt64();
-                            var offsetAdjust = reader.ReadInt32();
-                            var entryOffset = reader.BaseStream.Position;
-                            reader.BaseStream.Position = offset;
-                            uint dataCheck = reader.ReadUInt32();
-                            if (dataCheck == 0x00200002)
-                            {
-                                reader.BaseStream.Position = entryOffset;
-                            }
-                            else
-                            {
-                                entry = null;
-                                break;
-                            }
-                            entry.DataOffset = offset + offsetAdjust;
-                            entry.CompressedSize = reader.ReadInt32();
-                            entry.DecompressedSize = reader.ReadInt32();
-                            entry.Hash = reader.ReadUInt64();
-                            entry.CRC = reader.ReadUInt32();
-                            entry.CompressionMethod = reader.ReadInt16();
-                            nextEntryOffset = reader.BaseStream.Position;
-                        }
-                        catch(Exception ex)
-                        {
-                            Debug.WriteLine($"Exception in FileEntry: {ex.Message}\n{ex.StackTrace}");
-                            throw;
-                        }
-                        if (hashDictionary.TryGetPath(entry.Hash, out var relativePath) &&
-                                ShouldProcessFile(relativePath, Path.GetFileName(archiveFilePath)))
-                        {
-                            await ProcessEntryAsync(
-                                    archiveStream,
-                                    entry,
-                                    entry.DataOffset,
-                                    ConstructOutputPath(outputRootPath, relativePath, isPts, isBeta),
-                                    progressCallback);
-                        }
-                        reader.BaseStream.Seek(nextEntryOffset - reader.BaseStream.Position, SeekOrigin.Current);
-                    }
+                        DataOffset = offset + BinaryPrimitives.ReadInt32LittleEndian(e.Slice(8)),
+                        CompressedSize = BinaryPrimitives.ReadInt32LittleEndian(e.Slice(12)),
+                        DecompressedSize = BinaryPrimitives.ReadInt32LittleEndian(e.Slice(16)),
+                        Hash = hash,
+                        CRC = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(28)),
+                        CompressionMethod = BinaryPrimitives.ReadInt16LittleEndian(e.Slice(32)),
+                        RelativePath = relativePath,
+                    });
                 }
             }
+
+            entries.Sort((a, b) => a.DataOffset.CompareTo(b.DataOffset));
+            return entries;
         }
 
-        private bool ShouldProcessFile(string relativePath, string archiveFileName)
+        /// <summary>
+        /// Decompresses (if needed) one entry's data and writes it to <paramref name="outputPath"/>.
+        /// <paramref name="source"/> holds exactly the entry's stored (possibly compressed) bytes.
+        /// </summary>
+        public static void WriteEntry(
+            FileEntry entry,
+            int archiveVersion,
+            ReadOnlySpan<byte> source,
+            Span<byte> scratch,
+            Decompressor zstd,
+            string outputPath)
         {
-            if (string.Equals(relativePath, archiveFileName, StringComparison.OrdinalIgnoreCase))
-                return false;
+            ReadOnlySpan<byte> data;
+            if (!entry.IsCompressed || entry.DecompressedSize == 0)
+            {
+                data = source;
+            }
+            else
+            {
+                int written = archiveVersion switch
+                {
+                    6 => zstd.Unwrap(source, scratch),
+                    5 => InflateZlib(source, scratch),
+                    _ => throw new NotSupportedException($"Unsupported archive version {archiveVersion}")
+                };
+                if (written != entry.DecompressedSize)
+                    throw new InvalidDataException($"Decompressed {written} bytes, expected {entry.DecompressedSize}: {entry.RelativePath}");
+                data = scratch[..written];
+            }
 
-            return !relativePath.Contains("metadata.bin") &&
-                   !relativePath.Contains("ft.sig") &&
-                   !relativePath.Contains("groupmanifest.bin");
+            // One open + one write per file; no async/stream overhead for the many tiny files.
+            using var file = File.OpenHandle(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            if (!data.IsEmpty)
+                RandomAccess.Write(file, data, 0);
         }
 
-        private string ConstructOutputPath(string rootPath, string relativePath, bool isPts, bool isBeta)
+        /// <summary>
+        /// Extracts one entry by streaming it from the archive to <paramref name="outputPath"/> in 1MB chunks.
+        /// Used for very large files so they never have to fit in memory.
+        /// </summary>
+        public static void StreamEntry(SafeFileHandle archive, FileEntry entry, int archiveVersion, string outputPath)
         {
-            var basePath = isPts ? Path.Combine(rootPath, "pts") :
-                          isBeta ? Path.Combine(rootPath, "beta") :
-                                   rootPath;
-            relativePath = relativePath.Replace('/', '\\');
-            var fullPath = $"{basePath}{relativePath}";
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            return fullPath;
+            const int ChunkSize = 1024 * 1024;
+            using var source = new HandleRangeStream(archive, entry.DataOffset, entry.CompressedSize);
+            using var output = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, ChunkSize);
+
+            if (!entry.IsCompressed || entry.DecompressedSize == 0)
+            {
+                source.CopyTo(output, ChunkSize);
+            }
+            else
+            {
+                using Stream decompressor = archiveVersion switch
+                {
+                    6 => new DecompressionStream(source, ChunkSize, leaveOpen: true),
+                    5 => new ZLibStream(source, CompressionMode.Decompress, leaveOpen: true),
+                    _ => throw new NotSupportedException($"Unsupported archive version {archiveVersion}")
+                };
+                decompressor.CopyTo(output, ChunkSize);
+            }
+
+            if (output.Length != entry.DecompressedSize)
+                throw new InvalidDataException($"Wrote {output.Length} bytes, expected {entry.DecompressedSize}: {entry.RelativePath}");
         }
 
-        private async Task ProcessEntryAsync(
-        FileStream archiveStream,
-        FileEntry entry,
-        long dataOffset,
-        string outputPath,
-        Action progressCallback)
+        // Version 5 (zlib) archives are legacy; a copy of the input keeps this simple.
+        private static int InflateZlib(ReadOnlySpan<byte> source, Span<byte> destination)
         {
-            using (var outputStream = new FileStream(outputPath,
-                FileMode.Create,
-                FileAccess.Write,
-                FileShare.None,
-                BufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            using var input = new MemoryStream(source.ToArray(), writable: false);
+            using var inflater = new ZLibStream(input, CompressionMode.Decompress);
+            int total = 0, read;
+            while (total < destination.Length && (read = inflater.Read(destination[total..])) > 0)
+                total += read;
+            return total;
+        }
+
+        public static void ReadExactly(SafeFileHandle handle, Span<byte> buffer, long fileOffset)
+        {
+            while (!buffer.IsEmpty)
             {
-                //long pos = archiveStream.Position;
-                archiveStream.Seek(entry.DataOffset, SeekOrigin.Begin);
-                if (entry.IsCompressed)
-                {
-                    await DecompressAsync(archiveStream, outputStream, entry);
-                }
-                else
-                {
-                    await CopyUncompressedAsync(archiveStream, outputStream, entry);
-                }
-                progressCallback();
+                int read = RandomAccess.Read(handle, buffer, fileOffset);
+                if (read <= 0) throw new EndOfStreamException("Unexpected end of archive.");
+                buffer = buffer[read..];
+                fileOffset += read;
             }
         }
-        private async Task DecompressAsync(FileStream input, FileStream outputStream, FileEntry entry)
+    }
+
+    /// <summary>Read-only stream over a byte range of a file handle (does not own or close the handle).</summary>
+    internal sealed class HandleRangeStream : Stream
+    {
+        private readonly SafeFileHandle _handle;
+        private readonly long _start;
+        private readonly long _length;
+        private long _position;
+
+        public HandleRangeStream(SafeFileHandle handle, long start, long length)
         {
-            try
-            {
-                switch (Header.Version)
-                {
-                    case 5:
-                        {
-                            await using var decompressor = new ZLibStream(input, CompressionMode.Decompress, leaveOpen: true);
-                            await decompressor.CopyToAsync(outputStream, BufferSize);
-                        }
-                        break;
-                    case 6:
-                        {
-                            byte[] b = new byte[entry.CompressedSize];
-                            await input.ReadAsync(b, 0, entry.CompressedSize);
-                            await using var decompressor = new DecompressionStream(new MemoryStream(b), entry.CompressedSize, leaveOpen: true);
-                            await decompressor.CopyToAsync(outputStream, BufferSize);
-                        }
-                        break;
-                    default:
-                        throw new NotSupportedException();
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.WriteLine($"Exception caught in DecompressAsync: {e.Message}\n\n{e.StackTrace}");
-                Debugger.Break();
-                throw;
-            }
+            _handle = handle;
+            _start = start;
+            _length = length;
         }
-        private async Task CopyUncompressedAsync(FileStream input, FileStream outputStream, FileEntry entry)
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
         {
-            var bytesRemaining = entry.CompressedSize;
-            var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-            try
-            {
-                while (bytesRemaining > 0)
-                {
-                    var readSize = Math.Min(buffer.Length, bytesRemaining);
-                    var bytesRead = await input.ReadAsync(buffer, 0, readSize);
-                    if (bytesRead == 0)
-                        throw new EndOfStreamException("Unexpected end of stream.");
-                    await outputStream.WriteAsync(buffer, 0, bytesRead);
-                    bytesRemaining -= bytesRead;
-                }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
+            long remaining = _length - _position;
+            if (remaining <= 0) return 0;
+            if (buffer.Length > remaining) buffer = buffer[..(int)remaining];
+            int read = RandomAccess.Read(_handle, buffer, _start + _position);
+            _position += read;
+            return read;
         }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => _length;
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     public class TORHeader
@@ -213,6 +231,21 @@ namespace extracTOR
                 IndexOffset = reader.ReadInt64(),
                 Capacity = reader.ReadInt32(),
                 FileCount = reader.ReadInt32()
+            };
+        }
+
+        public static TORHeader ReadHeader(SafeFileHandle handle)
+        {
+            Span<byte> h = stackalloc byte[28];
+            TORArchive.ReadExactly(handle, h, 0);
+            return new TORHeader
+            {
+                MagicNumber = BinaryPrimitives.ReadInt32LittleEndian(h),
+                Version = BinaryPrimitives.ReadInt32LittleEndian(h[4..]),
+                Endianness = BinaryPrimitives.ReadInt32LittleEndian(h[8..]),
+                IndexOffset = BinaryPrimitives.ReadInt64LittleEndian(h[12..]),
+                Capacity = BinaryPrimitives.ReadInt32LittleEndian(h[20..]),
+                FileCount = BinaryPrimitives.ReadInt32LittleEndian(h[24..]),
             };
         }
     }
